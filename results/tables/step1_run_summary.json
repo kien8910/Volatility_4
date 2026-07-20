@@ -1,0 +1,24 @@
+{
+  "validation_prediction_rows": 465696,
+  "test_prediction_rows": 96030,
+  "failure_rows": 704,
+  "elapsed_sec": 116.63134220003849,
+  "best_test": [
+    {
+      "model": "B4_HAR_Ridge",
+      "horizon": 1,
+      "n": 2761,
+      "qlike": 0.254904444513105,
+      "mse": 0.11479894110168036,
+      "rmse": 0.3388199242985577,
+      "mae": 0.2696360936971625,
+      "pearson": 0.5179116538799826,
+      "spearman": 0.5056954720641483,
+      "qlike_spike_days": 1.655477332735439,
+      "qlike_normal_days": 0.1995354109049179,
+      "pred_exp_clip_count": 0,
+      "training_time_sec": 0.0011812545390884307,
+      "inference_time_sec": 0.28987991577014327
+    }
+  ]
+}

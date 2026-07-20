@@ -1,0 +1,4 @@
+timestamp,step,rule,affected_rows,affected_tickers,action,output_file,note
+2026-07-19T12:58:10.942344+00:00,duplicates,exact duplicate,0,0,deduplicate,canonical/modeling,Exact copies only
+2026-07-19T12:58:10.942477+00:00,duplicates,conflicting key,0,0,quarantine,data/quarantine/conflicting_duplicates.parquet,No arbitrary selection
+2026-07-19T12:58:10.942507+00:00,ohlc,invalid OHLC,10,9,quarantine and exclude,data/quarantine/invalid_ohlc.parquet,No interpolation/fill

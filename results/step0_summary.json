@@ -1,0 +1,53 @@
+{
+  "raw_rows": 130400,
+  "invalid_ohlc": 10,
+  "corp": 0,
+  "gk_nonpos": 2,
+  "rs_nonpos": 54,
+  "hard_ok": true,
+  "processed_rows": 130390,
+  "tickers": 100,
+  "dates": 1304,
+  "exact_duplicates": 0,
+  "conflicting_duplicate_rows": 0,
+  "leakage_candidates": 29140,
+  "output_hash": "6a86fdfe06cad60f7e9e5903545e2f5901ada9c000f47c3c689be41db5740140",
+  "decision": "CONDITIONAL GO",
+  "news": [
+    {
+      "hierarchy": "macro",
+      "rows_with_text": 129490,
+      "row_coverage": 0.993097630186364,
+      "missing_rate": 0.006902369813636011,
+      "unique_text": 6466
+    },
+    {
+      "hierarchy": "sector",
+      "rows_with_text": 126575,
+      "row_coverage": 0.9707416212899762,
+      "missing_rate": 0.02925837871002379,
+      "unique_text": 63122
+    },
+    {
+      "hierarchy": "target_company",
+      "rows_with_text": 52468,
+      "row_coverage": 0.4023928215353938,
+      "missing_rate": 0.5976071784646062,
+      "unique_text": 99595
+    },
+    {
+      "hierarchy": "related_company",
+      "rows_with_text": 129482,
+      "row_coverage": 0.9930362757880206,
+      "missing_rate": 0.0069637242119794385,
+      "unique_text": 387593
+    },
+    {
+      "hierarchy": "filing",
+      "rows_with_text": 130390,
+      "row_coverage": 1.0,
+      "missing_rate": 0.0,
+      "unique_text": 37743
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+source: step1_validation
+model_name: HAR-Ridge
+fallback_used: true
+features:
+- har_d
+- har_w
+- har_m
+selection_metric: validation_qlike
+selected:
+- ticker: ADI
+  horizon: 1
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.2657888098312503
+- ticker: ADI
+  horizon: 5
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.33118575150876906
+- ticker: ADI
+  horizon: 10
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.33181909585568636
+- ticker: ADI
+  horizon: 22
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.35902019157596915
+- ticker: AMAT
+  horizon: 1
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.29535909443064245
+- ticker: AMAT
+  horizon: 5
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.312184179632723
+- ticker: AMAT
+  horizon: 10
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.3703762891958324
+- ticker: AMAT
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.36734059470654257
+- ticker: AMD
+  horizon: 1
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.2493719565776298
+- ticker: AMD
+  horizon: 5
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.30450351992263414
+- ticker: AMD
+  horizon: 10
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.33881988375716365
+- ticker: AMD
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.3909250076672003
+- ticker: AVGO
+  horizon: 1
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.2781982539014549
+- ticker: AVGO
+  horizon: 5
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.3260921191565642
+- ticker: AVGO
+  horizon: 10
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.3623782048949414
+- ticker: AVGO
+  horizon: 22
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.37363446173771303
+- ticker: INTC
+  horizon: 1
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.27773232730048275
+- ticker: INTC
+  horizon: 5
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.3241880769704236
+- ticker: INTC
+  horizon: 10
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.3294654987516255
+- ticker: INTC
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.35205501695954994
+- ticker: KLAC
+  horizon: 1
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.31285889176531234
+- ticker: KLAC
+  horizon: 5
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.3526802681100098
+- ticker: KLAC
+  horizon: 10
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.3991697819080989
+- ticker: KLAC
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.40529702302947684
+- ticker: LRCX
+  horizon: 1
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.29731800983598045
+- ticker: LRCX
+  horizon: 5
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.3352329992702707
+- ticker: LRCX
+  horizon: 10
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.3914357011122284
+- ticker: LRCX
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.37795532848520985
+- ticker: MU
+  horizon: 1
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.27655762577339044
+- ticker: MU
+  horizon: 5
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.30379412943973455
+- ticker: MU
+  horizon: 10
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.3383164226322365
+- ticker: MU
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.3210629906450709
+- ticker: NVDA
+  horizon: 1
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.37454090114588817
+- ticker: NVDA
+  horizon: 5
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.44990578389564906
+- ticker: NVDA
+  horizon: 10
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.5171467455951907
+- ticker: NVDA
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.6065846017622576
+- ticker: QCOM
+  horizon: 1
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.31128923476456405
+- ticker: QCOM
+  horizon: 5
+  hyperparams: '{"alpha": 0.1}'
+  validation_qlike: 0.37651906587314093
+- ticker: QCOM
+  horizon: 10
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.4100668985095803
+- ticker: QCOM
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.4602177298612
+- ticker: TXN
+  horizon: 1
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.2704638009700456
+- ticker: TXN
+  horizon: 5
+  hyperparams: '{"alpha": 1.0}'
+  validation_qlike: 0.2998861319420993
+- ticker: TXN
+  horizon: 10
+  hyperparams: '{"alpha": 10.0}'
+  validation_qlike: 0.33550062873603126
+- ticker: TXN
+  horizon: 22
+  hyperparams: '{"alpha": 0.001}'
+  validation_qlike: 0.36421183282147085

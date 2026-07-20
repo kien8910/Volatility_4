@@ -1,0 +1,7 @@
+check,value
+panel_tickers,100
+mapping_tickers,100
+missing_in_mapping,"BN, BRK, IBM, SCCO"
+extra_in_mapping,"BMY, BRK.B, IRM, SBUX"
+unresolved_after_alignment,4
+duplicate_mapping_rows,0

@@ -1,0 +1,45 @@
+experiment:
+  name: semiconductor_step3_oos_residual
+  seed: 42
+
+data:
+  panel_path: data/processed/fintexts_step0_panel.parquet
+  split_manifest_path: data/splits/split_manifest.csv
+  expanding_folds_path: data/splits/expanding_folds.csv
+  tickers:
+    - ADI
+    - AMAT
+    - AMD
+    - AVGO
+    - INTC
+    - KLAC
+    - LRCX
+    - MU
+    - NVDA
+    - QCOM
+    - TXN
+
+target:
+  name: logvol_gk
+  epsilon: 1.0e-12
+  horizons: [1, 5, 10, 22]
+
+p_model:
+  primary_config: results/step2/best_p_model_config.yaml
+  fallback_config: results/step1/best_baseline_config.yaml
+  refit_strategy: expanding
+  refit_frequency: 1
+  initial_training_days: 504
+
+diagnostics:
+  acf_max_lag: 66
+  acf_energy_lag: 22
+  low_frequency_fraction: 0.10
+  cross_correlation_lags: [1, 2, 3, 4, 5]
+  minimum_reduction: 0.15
+
+output:
+  step3_dir: results/step3
+  tables_dir: results/tables
+  figures_dir: results/figures
+  report_path: reports/step3_residual_report.md

@@ -1,0 +1,6 @@
+{
+  "mean_abs_offdiag_residual_corr": 0.4549326843881496,
+  "mean_abs_offdiag_raw_corr": 0.5311746196411827,
+  "significant_lagged_pairs_p05": 30,
+  "max_abs_lagged_corr": 0.5155998927124751
+}

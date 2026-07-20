@@ -1,0 +1,28 @@
+dataset:
+  id: EXAONE-BI/FinTexTS
+  split: train
+  revision: null
+reproducibility:
+  seed: 42
+targets:
+  epsilon: 1.0e-12
+  horizons: [1, 5, 10, 22]
+  primary: logvol_gk
+  robustness: [logvol_rs, squared_return, absolute_return]
+splits:
+  locked_test_days: 252
+  validation_days: 126
+  expanding_folds: 4
+  minimum_initial_train_days: 504
+news:
+  normalize_whitespace: true
+  create_text_hash: true
+  treat_filing_as_context: true
+  concatenate_separator: " [SEP] "
+audit:
+  manual_news_sample_size: 150
+  ohlc_external_sample_size: 100
+  acf_max_lag: 66
+  spike_quantile: 0.90
+  extreme_return_threshold: 0.35
+
