@@ -1,0 +1,81 @@
+experiment:
+  name: semiconductor_step4_static_residual_graph
+  output_dir: results/step4
+  checkpoint_dir: checkpoints/step4
+  log_dir: logs/step4
+  seeds: [42, 123, 2026, 3407, 9999]
+
+runtime:
+  device: auto
+  use_amp: true
+  num_workers: 4
+  pin_memory: true
+  deterministic: true
+  resume: false
+
+data:
+  residual_state_path: data/processed/step3_residual_state.parquet
+  residual_target_path: data/processed/step3_residual_targets.parquet
+  p_prediction_path: results/step3/oos_p_predictions.parquet
+  split_manifest_path: data/splits/split_manifest.csv
+  fold_manifest_path: data/splits/expanding_folds.csv
+  tickers:
+    - ADI
+    - AMAT
+    - AMD
+    - AVGO
+    - INTC
+    - KLAC
+    - LRCX
+    - MU
+    - NVDA
+    - QCOM
+    - TXN
+
+target:
+  horizons: [1, 5, 10, 22]
+  epsilon: 1.0e-12
+
+window:
+  lookbacks: [22, 44, 66]
+
+temporal_encoder:
+  options: [linear, small_tcn]
+  hidden_dim: 32
+  channels: [32, 32]
+  kernel_size: 3
+  dropout: 0.1
+  activation: relu
+
+graph:
+  types: [identity, correlation, random, learned]
+  top_k: [2, 3, 5]
+  embedding_dims: [8, 16, 32]
+  directed_options: [true, false]
+  graph_layer: gcn
+  residual_lambda: 1.0
+
+training:
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 150
+  early_stopping_patience: 15
+  gradient_clip_norm: 1.0
+  loss_options: [mse, huber]
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+
+reconstruction:
+  enabled: true
+  mask_ratios: [0.20, 0.25]
+
+evaluation:
+  primary_metric: qlike
+  spike_quantile: 0.90
+  bootstrap_block_length: 22
+  clip_logvol_min: -20.0
+  clip_logvol_max: 20.0
+  improvement_threshold: 0.01
+  spike_improvement_threshold: 0.03
+  reconstruction_improvement_threshold: 0.05

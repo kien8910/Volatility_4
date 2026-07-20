@@ -1,0 +1,20 @@
+name: semiconductor-step4-graph
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - pandas
+  - pyarrow
+  - scipy
+  - scikit-learn
+  - statsmodels
+  - pytorch
+  - pyyaml
+  - matplotlib
+  - networkx
+  - tqdm
+  - psutil
+  - pytest
