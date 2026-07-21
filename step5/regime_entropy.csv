@@ -1,0 +1,5 @@
+config_id,model,split,gate_entropy,effective_regimes,collapse_90,collapse_95,mean_regime_weight_1,p_regime_weight_1_gt_0_5,mean_regime_weight_2,p_regime_weight_2_gt_0_5
+S5-B0__K1__beta0__tau1__gh16__regnone__rw0,S5-B0,validation,,1.0,False,False,,,,
+S5-E__K1__beta0.9__tau1__gh16__regnone__rw0,S5-E,validation,,1.0,False,False,,,,
+S5-E__K1__beta0__tau1__gh16__regnone__rw0,S5-E,validation,,1.0,False,False,,,,
+S5-R__K2__beta0__tau1__gh16__regnone__rw0,S5-R,validation,0.6930133056977719,1.999732268197332,False,False,0.5081813417168127,0.4880952380952381,0.4918186589077647,0.5119047619047619

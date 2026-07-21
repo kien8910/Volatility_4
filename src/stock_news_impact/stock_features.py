@@ -6,6 +6,10 @@ import pandas as pd
 
 def add_stock_features(frame: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
+    if "ticker" not in out.columns:
+        raise ValueError("add_stock_features requires a ticker column.")
+    if out.columns.tolist().count("ticker") > 1:
+        raise ValueError("add_stock_features received duplicate ticker columns.")
     out["stock_prediction"] = out["stock_prediction"].astype(float)
     out["stock_residual_prediction"] = out["stock_residual_prediction"].astype(float)
     out["abs_stock_residual_prediction"] = out["stock_residual_prediction"].abs()
