@@ -1,0 +1,5 @@
+{
+  "mode": "evaluate-test",
+  "device": "cuda",
+  "finished": true
+}

@@ -1,0 +1,5 @@
+{
+  "mode": "train-validation",
+  "device": "cuda",
+  "finished": true
+}

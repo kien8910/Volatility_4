@@ -1,0 +1,108 @@
+experiment:
+  name: semiconductor_step5_regime_graph
+  output_dir: results/step5
+  checkpoint_dir: checkpoints/step5
+  log_dir: logs/step5
+  seeds: [42, 123]
+
+runtime:
+  device: auto
+  use_amp: true
+  num_workers: 4
+  pin_memory: true
+  deterministic: true
+  resume: false
+
+data:
+  residual_state_path: data/processed/step3_residual_state.parquet
+  residual_target_path: data/processed/step3_residual_targets.parquet
+  p_prediction_path: results/step3/oos_p_predictions.parquet
+  split_manifest_path: data/splits/split_manifest.csv
+  fold_manifest_path: data/splits/expanding_folds.csv
+  step4_config_path: results/step4/best_static_graph_config.yaml
+  tickers: [ADI, AMAT, AMD, AVGO, INTC, KLAC, LRCX, MU, NVDA, QCOM, TXN]
+
+backbone:
+  lock_step4_configuration: true
+  # Values below are safety defaults. When lock_step4_configuration=true, run_step5
+  # reads and validates results/step4/best_static_graph_config.yaml.
+  model: G5
+  lookback: 22
+  temporal_encoder: small_tcn
+  graph_layer: gcn
+  graph_type: learned
+  top_k: 3
+  graph_embedding_dim: 8
+  directed: false
+  loss: mse
+  horizons: [1, 5, 10, 22]
+  hidden_dim: 32
+  channels: [32, 32]
+  kernel_size: 3
+  dropout: 0.1
+  activation: relu
+
+search:
+  grid_mode: pilot
+  include_models: [S5-B0, S5-E, S5-R]
+  incremental_writes: true
+  max_configs:
+
+reproduction:
+  warn_relative_diff: 0.02
+  fail_relative_diff: 0.10
+  step4_validation_qlike: 0.330002916216928
+
+ema:
+  betas: [0.0, 0.9]
+  update_frequency: epoch
+  apply_before_topk: true
+  use_for_training: false
+  use_for_validation: true
+  use_for_inference: true
+
+graph_bank:
+  K_values: [1, 2]
+  shared_gcn_weights: true
+  independent_node_embeddings: true
+
+state_features:
+  include:
+    - market_logvol_mean
+    - market_logvol_std
+    - residual_abs_mean
+    - residual_std
+    - logvol_dispersion
+    - residual_dispersion
+    - market_logvol_change
+  standardize: true
+
+gate:
+  hidden_dims: [16]
+  temperatures: [1.0]
+  dropout: 0.1
+  regularization_options: [none]
+  regularization_weights: [0.0]
+
+training:
+  use_step4_hyperparameters: true
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 80
+  early_stopping_patience: 15
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+  early_stopping_metric: qlike
+  gradient_clip_norm: 1.0
+  loss: mse
+
+evaluation:
+  primary_metric: qlike
+  epsilon: 1.0e-12
+  spike_quantile: 0.90
+  market_state_quantiles: [0.33, 0.67]
+  bootstrap_block_length: 22
+  collapse_threshold: 0.90
+  clip_logvol_min: -20.0
+  clip_logvol_max: 20.0

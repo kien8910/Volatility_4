@@ -1,0 +1,8 @@
+2026-07-20 11:51:55,106 INFO Step 4 mode=validate-data device=cuda
+2026-07-20 11:51:55,498 INFO Validated lookback=22 samples=756 tickers=['ADI', 'AMAT', 'AMD', 'AVGO', 'INTC', 'KLAC', 'LRCX', 'MU', 'NVDA', 'QCOM', 'TXN']
+2026-07-20 11:51:55,853 INFO Validated lookback=44 samples=734 tickers=['ADI', 'AMAT', 'AMD', 'AVGO', 'INTC', 'KLAC', 'LRCX', 'MU', 'NVDA', 'QCOM', 'TXN']
+2026-07-20 11:51:56,208 INFO Validated lookback=66 samples=712 tickers=['ADI', 'AMAT', 'AMD', 'AVGO', 'INTC', 'KLAC', 'LRCX', 'MU', 'NVDA', 'QCOM', 'TXN']
+2026-07-20 11:53:38,086 INFO Step 4 mode=validate-data device=cuda
+2026-07-20 11:53:38,490 INFO Validated lookback=22 samples=756 tickers=['ADI', 'AMAT', 'AMD', 'AVGO', 'INTC', 'KLAC', 'LRCX', 'MU', 'NVDA', 'QCOM', 'TXN']
+2026-07-20 11:53:38,850 INFO Validated lookback=44 samples=734 tickers=['ADI', 'AMAT', 'AMD', 'AVGO', 'INTC', 'KLAC', 'LRCX', 'MU', 'NVDA', 'QCOM', 'TXN']
+2026-07-20 11:53:39,215 INFO Validated lookback=66 samples=712 tickers=['ADI', 'AMAT', 'AMD', 'AVGO', 'INTC', 'KLAC', 'LRCX', 'MU', 'NVDA', 'QCOM', 'TXN']

@@ -1,0 +1,16 @@
+Python: 3.12.13
+Platform: Linux-5.15.0-185-generic-x86_64-with-glibc2.39
+PyTorch: 2.12.0+cu126
+CUDA available: True
+CUDA version: 12.6
+GPU name: NVIDIA GeForce RTX 3080 Ti
+GPU memory GB: 11.76
+CPU count: 12
+RAM GB: 35.15
+Required files:
+  data/processed/step3_residual_state.parquet: OK
+  data/processed/step3_residual_targets.parquet: OK
+  results/step3/oos_p_predictions.parquet: OK
+  data/splits/split_manifest.csv: OK
+  data/splits/expanding_folds.csv: OK
+  configs/step4_static_graph.yaml: OK

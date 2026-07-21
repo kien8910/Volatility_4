@@ -1,0 +1,7 @@
+selection_rule: minimum mean validation QLIKE; locked test not used
+model: G5
+config_id: G5__L22__small_tcn__mse__learned__k3__dg8
+validation_qlike: 0.330002916216928
+refit_epochs: 1
+completed_configs_considered: 6
+partially_completed_configs_ignored: 6
