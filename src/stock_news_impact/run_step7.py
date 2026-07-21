@@ -67,6 +67,34 @@ def load_step6_predictions(cfg: dict) -> pd.DataFrame:
     return pred
 
 
+def should_force_rebuild(cfg: dict) -> bool:
+    return bool(cfg.get("runtime", {}).get("force_rebuild", False))
+
+
+def event_summary(events: pd.DataFrame) -> pd.DataFrame:
+    if events.empty:
+        return pd.DataFrame(columns=["hierarchy", "event_scope", "events"])
+    return (
+        events.groupby(["hierarchy", "event_scope"], as_index=False)
+        .agg(events=("event_id", "nunique"))
+        .sort_values(["hierarchy", "event_scope"])
+    )
+
+
+def pair_summary(pairs: pd.DataFrame) -> pd.DataFrame:
+    if pairs.empty:
+        return pd.DataFrame(columns=["hierarchy", "event_scope", "is_direct_target", "pairs", "events", "target_stocks"])
+    return (
+        pairs.groupby(["hierarchy", "event_scope", "is_direct_target"], as_index=False)
+        .agg(pairs=("event_id", "size"), events=("event_id", "nunique"), target_stocks=("target_ticker", "nunique"))
+        .sort_values(["hierarchy", "event_scope", "is_direct_target"])
+    )
+
+
+def log_summary(logger: logging.Logger, title: str, summary: pd.DataFrame) -> None:
+    logger.info("%s:\n%s", title, summary.to_string(index=False) if not summary.empty else "<empty>")
+
+
 def mode_validate_data(cfg: dict, logger: logging.Logger) -> None:
     if list(cfg["data"]["tickers"]) != SEMICONDUCTOR_TICKERS:
         raise ValueError(f"Step 7 ticker list must exactly match {SEMICONDUCTOR_TICKERS}")
@@ -101,14 +129,17 @@ def mode_build_events(cfg: dict, logger: logging.Logger) -> pd.DataFrame:
             events = events.groupby("date", group_keys=False).head(max_events).reset_index(drop=True)
     atomic_parquet(events, "data/processed/step7_news_events.parquet")
     atomic_parquet(events, out_dir / "step7_news_events.parquet")
+    summary = event_summary(events)
+    atomic_csv(summary, out_dir / "event_summary.csv")
     logger.info("Built Step 7 events rows=%s", len(events))
+    log_summary(logger, "Step 7 event summary by hierarchy", summary)
     return events
 
 
 def mode_build_pairs(cfg: dict, logger: logging.Logger) -> pd.DataFrame:
     out_dir = Path(cfg["experiment"]["output_dir"])
     events_path = Path("data/processed/step7_news_events.parquet")
-    events = pd.read_parquet(events_path) if events_path.exists() else mode_build_events(cfg, logger)
+    events = pd.read_parquet(events_path) if events_path.exists() and not should_force_rebuild(cfg) else mode_build_events(cfg, logger)
     pred = load_step6_predictions(cfg)
     stock = pred.loc[pred["model"].astype(str).eq("stock_only")].copy()
     pairs = build_event_stock_pairs(
@@ -121,14 +152,19 @@ def mode_build_pairs(cfg: dict, logger: logging.Logger) -> pd.DataFrame:
     validate_pairs(pairs)
     atomic_parquet(pairs, "data/processed/step7_event_stock_pairs.parquet")
     atomic_parquet(pairs, out_dir / "step7_event_stock_pairs.parquet")
+    summary = pair_summary(pairs)
+    atomic_csv(summary, out_dir / "event_stock_pair_summary.csv")
     logger.info("Built Step 7 event-stock pairs rows=%s", len(pairs))
+    log_summary(logger, "Step 7 event-stock pair summary by hierarchy", summary)
     return pairs
 
 
 def mode_build_features(cfg: dict, logger: logging.Logger) -> tuple[pd.DataFrame, dict[str, list[str]]]:
     out_dir = Path(cfg["experiment"]["output_dir"])
-    events = pd.read_parquet("data/processed/step7_news_events.parquet") if Path("data/processed/step7_news_events.parquet").exists() else mode_build_events(cfg, logger)
-    pairs = pd.read_parquet("data/processed/step7_event_stock_pairs.parquet") if Path("data/processed/step7_event_stock_pairs.parquet").exists() else mode_build_pairs(cfg, logger)
+    events_path = Path("data/processed/step7_news_events.parquet")
+    pairs_path = Path("data/processed/step7_event_stock_pairs.parquet")
+    events = pd.read_parquet(events_path) if events_path.exists() and not should_force_rebuild(cfg) else mode_build_events(cfg, logger)
+    pairs = pd.read_parquet(pairs_path) if pairs_path.exists() and not should_force_rebuild(cfg) else mode_build_pairs(cfg, logger)
     pred = load_step6_predictions(cfg)
     selected = choose_step6_news_branch(cfg)
     abnormal = build_abnormal_response(pred)
@@ -140,6 +176,7 @@ def mode_build_features(cfg: dict, logger: logging.Logger) -> tuple[pd.DataFrame
     atomic_csv(oracle_diagnostic(frame), out_dir / "oracle_diagnostics.csv")
     atomic_csv(simple_treatment_control_did(frame), out_dir / "did_diagnostics.csv")
     logger.info("Built Step 7 gate features rows=%s", len(frame))
+    log_summary(logger, "Step 7 gate feature summary by hierarchy", pair_summary(frame))
     return frame, columns
 
 
@@ -152,6 +189,26 @@ def enumerate_run_configs(cfg: dict) -> list[Step7RunConfig]:
         elif model == "S2_FixedSmallGate":
             for g in cfg["search"].get("fixed_gate_values", [0.10]):
                 runs.append(Step7RunConfig(model=model, fixed_gate=float(g)))
+        elif model == "S5_UtilityFactorizedGate":
+            for p0, hidden, uw, cw, utw, cutw in product(
+                cfg["search"].get("initial_gate_probabilities", [0.10]),
+                cfg["search"].get("relevance_hidden_options", [[32, 16]]),
+                cfg["regularization"].get("usage_weights", [0.001]),
+                cfg["regularization"].get("correction_weights", [0.001]),
+                cfg["utility_supervision"].get("weights", [0.05]),
+                cfg["utility_supervision"].get("common_weights", [0.10]),
+            ):
+                runs.append(
+                    Step7RunConfig(
+                        model=model,
+                        initial_probability=float(p0),
+                        relevance_hidden=tuple(int(x) for x in hidden),
+                        usage_weight=float(uw),
+                        correction_weight=float(cw),
+                        utility_weight=float(utw),
+                        common_utility_weight=float(cutw),
+                    )
+                )
         else:
             for p0, hidden, uw, cw in product(
                 cfg["search"].get("initial_gate_probabilities", [0.10]),
@@ -171,7 +228,7 @@ def enumerate_run_configs(cfg: dict) -> list[Step7RunConfig]:
 
 def mode_train_gate(cfg: dict, device: torch.device, logger: logging.Logger) -> None:
     out_dir = Path(cfg["experiment"]["output_dir"])
-    if (out_dir / "gate_features.parquet").exists() and (out_dir / "feature_columns.yaml").exists():
+    if (out_dir / "gate_features.parquet").exists() and (out_dir / "feature_columns.yaml").exists() and not should_force_rebuild(cfg):
         frame = pd.read_parquet(out_dir / "gate_features.parquet")
         columns = yaml.safe_load((out_dir / "feature_columns.yaml").read_text(encoding="utf-8"))
     else:
@@ -254,6 +311,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-pairs", type=int, default=None)
     parser.add_argument("--seeds", default=None)
     parser.add_argument("--max-epochs", type=int, default=None)
+    parser.add_argument("--force-rebuild", action="store_true")
     return parser.parse_args()
 
 
@@ -268,6 +326,8 @@ def main() -> None:
         cfg["runtime"]["device"] = args.device
     if args.resume:
         cfg["runtime"]["resume"] = True
+    if args.force_rebuild:
+        cfg["runtime"]["force_rebuild"] = True
     if args.max_runs is not None:
         cfg.setdefault("pilot", {})["max_runs"] = int(args.max_runs)
     if args.max_pairs is not None:
@@ -278,6 +338,19 @@ def main() -> None:
         cfg["training"]["max_epochs"] = int(args.max_epochs)
     logger = setup_logger(cfg["experiment"]["log_dir"], args.mode)
     device = resolve_device(str(cfg["runtime"].get("device", "auto")))
+    if args.mode == "pilot":
+        mode_validate_data(cfg, logger)
+        mode_build_features(cfg, logger)
+        # The freshly rebuilt feature file should be reused by train_gate within
+        # this pilot invocation instead of forcing another rebuild.
+        cfg["runtime"]["force_rebuild"] = False
+        mode_train_gate(cfg, device, logger)
+        if bool(cfg.get("pilot", {}).get("run_placebos", False)):
+            mode_run_placebos(cfg, logger)
+        out_dir = Path(cfg["experiment"]["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "run_summary.json").write_text(json.dumps({"mode": args.mode, "device": str(device), "finished": True}, indent=2), encoding="utf-8")
+        return
     if args.mode in {"validate-data", "pilot", "full", "reproduce-baselines"}:
         mode_validate_data(cfg, logger)
     if args.mode in {"build-events", "pilot", "full"}:

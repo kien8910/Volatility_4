@@ -5,8 +5,9 @@ This is a pilot implementation for checking whether stock-specific gates can sup
 The default config [configs/step7_stock_specific_news.yaml](configs/step7_stock_specific_news.yaml) uses:
 
 - one seed: `42`
-- small model set: `S0_StockOnly_G5`, `S2_FixedSmallGate`, `S4_FactorizedGate`
-- small gate probabilities: `0.05`, `0.10`
+- small model set: `S0_StockOnly_G5`, `S2_FixedSmallGate`, `S5_UtilityFactorizedGate`
+- small fixed-gate probabilities: `0.03`, `0.05`
+- one loss/time-aware gate, `S5_UtilityFactorizedGate`, which uses historical stock/news loss context and auxiliary utility labels
 - balanced per-hierarchy event caps, so macro, sector, target-company, and related-company events are all represented
 - capped event-stock pairs
 - no locked-test evaluation
@@ -27,7 +28,8 @@ python -m src.stock_news_impact.run_step7 \
   --config configs/step7_stock_specific_news.yaml \
   --mode pilot \
   --device cuda \
-  --resume
+  --resume \
+  --force-rebuild
 ```
 
 Even smaller smoke run:
@@ -114,3 +116,15 @@ Macro and sector events are broadcast to all 11 semiconductor stocks, but their 
 - mean utility and abnormal response.
 
 A macro/sector event looks more like a real common industry shock when many stocks move in the same direction and the commonality ratio is high. This is still a predictive diagnostic, not causal evidence.
+
+## Loss/time-aware gating
+
+`S5_UtilityFactorizedGate` is designed for per-news and per-time adaptive gating. It does not use the current validation target as an input feature. Instead, it learns from:
+
+- historical ticker-level stock-only loss, news-adjusted loss, utility, and abnormal response;
+- historical market/time-level loss and utility;
+- historical macro/sector event utility across the stock universe;
+- row-level utility labels during training;
+- macro/sector common utility labels during training, so common news is judged by its cross-stock effect rather than by one ticker at a time.
+
+The historical context is causal: only observations whose realized `target_date` is strictly before the current event `date` are used as features. Current event utility is used only as a training label inside the training fold.

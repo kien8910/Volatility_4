@@ -65,9 +65,9 @@ events:
   include_hierarchies: [macro, sector, target_company, related_company]
 
 search:
-  include_models: [S0_StockOnly_G5, S2_FixedSmallGate, S4_FactorizedGate]
-  fixed_gate_values: [0.05, 0.10]
-  initial_gate_probabilities: [0.10]
+  include_models: [S0_StockOnly_G5, S2_FixedSmallGate, S5_UtilityFactorizedGate]
+  fixed_gate_values: [0.03, 0.05]
+  initial_gate_probabilities: [0.05]
   relevance_hidden_options:
     - [32, 16]
   spillover_modes: [target_only]
@@ -81,9 +81,10 @@ gate:
   shared_across_tickers: true
 
 utility_supervision:
-  enabled_options: [false]
+  enabled_options: [true]
   margin_quantiles: [0.25]
-  weights: [0.0]
+  weights: [0.05]
+  common_weights: [0.10]
   ignore_ambiguous: true
 
 regularization:
