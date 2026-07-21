@@ -31,7 +31,7 @@ def adjacency_to_edges(adjacency: torch.Tensor, tickers: list[str], model: str, 
 def graph_stability(edges: pd.DataFrame) -> pd.DataFrame:
     if edges.empty:
         return pd.DataFrame(columns=["model", "source", "target", "selection_frequency", "mean_weight"])
-    total = edges.groupby("model")[["fold_id", "seed"]].drop_duplicates().groupby("model").size()
+    total = edges[["model", "fold_id", "seed"]].drop_duplicates().groupby("model").size()
     grouped = edges.groupby(["model", "source", "target"], as_index=False).agg(
         selections=("weight", "size"),
         mean_weight=("weight", "mean"),

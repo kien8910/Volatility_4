@@ -78,6 +78,8 @@ def setup_logger(log_dir: str | Path, mode: str) -> logging.Logger:
 
 
 def enumerate_configs(cfg: dict) -> list[ModelConfig]:
+    search_cfg = cfg.get("search", {})
+    include_models = set(search_cfg.get("include_models") or ["G0", "G1", "G2", "G3", "G4", "G5"])
     lookbacks = list(cfg["window"]["lookbacks"])
     temporals = list(cfg["temporal_encoder"]["options"])
     losses = list(cfg["training"]["loss_options"])
@@ -87,30 +89,55 @@ def enumerate_configs(cfg: dict) -> list[ModelConfig]:
     graph_seeds = list(cfg["experiment"]["seeds"])
     configs: list[ModelConfig] = []
     for lookback, temporal, loss in product(lookbacks, temporals, losses):
-        configs.append(ModelConfig("G0", "raw", "none", lookback, temporal, loss))
-        configs.append(ModelConfig("G1", "residual", "identity", lookback, temporal, loss))
+        if "G0" in include_models:
+            configs.append(ModelConfig("G0", "raw", "none", lookback, temporal, loss))
+        if "G1" in include_models:
+            configs.append(ModelConfig("G1", "residual", "identity", lookback, temporal, loss))
         for top_k in top_ks:
-            configs.append(ModelConfig("G2", "residual", "correlation", lookback, temporal, loss, top_k=top_k))
-            for graph_seed in graph_seeds:
-                configs.append(ModelConfig("G3", "residual", "random", lookback, temporal, loss, top_k=top_k, graph_seed=graph_seed))
+            if "G2" in include_models:
+                configs.append(ModelConfig("G2", "residual", "correlation", lookback, temporal, loss, top_k=top_k))
+            if "G3" in include_models:
+                for graph_seed in graph_seeds:
+                    configs.append(ModelConfig("G3", "residual", "random", lookback, temporal, loss, top_k=top_k, graph_seed=graph_seed))
         for top_k, dim, directed in product(top_ks, dims, directed_options):
-            configs.append(
-                ModelConfig("G4", "raw", "learned", lookback, temporal, loss, top_k=top_k, graph_embedding_dim=dim, directed=directed)
-            )
-            configs.append(
-                ModelConfig(
-                    "G5",
-                    "residual",
-                    "learned",
-                    lookback,
-                    temporal,
-                    loss,
-                    top_k=top_k,
-                    graph_embedding_dim=dim,
-                    directed=directed,
+            if "G4" in include_models:
+                configs.append(
+                    ModelConfig("G4", "raw", "learned", lookback, temporal, loss, top_k=top_k, graph_embedding_dim=dim, directed=directed)
                 )
-            )
+            if "G5" in include_models:
+                configs.append(
+                    ModelConfig(
+                        "G5",
+                        "residual",
+                        "learned",
+                        lookback,
+                        temporal,
+                        loss,
+                        top_k=top_k,
+                        graph_embedding_dim=dim,
+                        directed=directed,
+                    )
+                )
+    max_configs = search_cfg.get("max_configs")
+    if max_configs is not None:
+        configs = configs[: int(max_configs)]
     return configs
+
+
+def apply_quick_grid(cfg: dict) -> dict:
+    """Shrink the grid for smoke/pilot runs without editing the YAML by hand."""
+    quick_cfg = yaml.safe_load(yaml.safe_dump(cfg))
+    quick_cfg.setdefault("search", {})
+    quick_cfg["search"]["quick_grid"] = True
+    quick_cfg["search"]["include_models"] = ["G0", "G1", "G2", "G5"]
+    quick_cfg["experiment"]["seeds"] = list(quick_cfg["experiment"]["seeds"])[:2]
+    quick_cfg["window"]["lookbacks"] = [int(quick_cfg["window"]["lookbacks"][0])]
+    quick_cfg["temporal_encoder"]["options"] = [str(quick_cfg["temporal_encoder"]["options"][0])]
+    quick_cfg["training"]["loss_options"] = [str(quick_cfg["training"]["loss_options"][0])]
+    quick_cfg["graph"]["top_k"] = list(quick_cfg["graph"]["top_k"])[:2]
+    quick_cfg["graph"]["embedding_dims"] = [int(quick_cfg["graph"]["embedding_dims"][0])]
+    quick_cfg["graph"]["directed_options"] = [False]
+    return quick_cfg
 
 
 def load_validated_samples(cfg: dict, lookback: int):
@@ -129,6 +156,122 @@ def make_loader(dataset, cfg: dict, shuffle: bool) -> DataLoader:
         num_workers=int(runtime.get("num_workers", 0)),
         pin_memory=bool(runtime.get("pin_memory", False)) and device.type == "cuda",
     )
+
+
+PREDICTION_RUN_KEY_COLUMNS = ["config_id", "fold_id", "seed"]
+PREDICTION_DEDUP_COLUMNS = [
+    "config_id",
+    "split",
+    "fold_id",
+    "seed",
+    "model",
+    "date",
+    "target_date",
+    "ticker",
+    "horizon",
+]
+EDGE_DEDUP_COLUMNS = ["config_id", "model", "fold_id", "seed", "source", "target"]
+FAILURE_COLUMNS = ["model", "config_id", "fold_id", "seed", "message"]
+
+
+def _atomic_write_parquet(df: pd.DataFrame, path: str | Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.stem}.tmp{path.suffix}")
+    df.to_parquet(tmp, index=False)
+    tmp.replace(path)
+
+
+def _atomic_write_csv(df: pd.DataFrame, path: str | Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.stem}.tmp{path.suffix}")
+    df.to_csv(tmp, index=False)
+    tmp.replace(path)
+
+
+def _read_parquet_if_exists(path: str | Path) -> pd.DataFrame:
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
+def _read_csv_if_exists(path: str | Path, columns: list[str] | None = None) -> pd.DataFrame:
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame(columns=columns)
+    return pd.read_csv(path)
+
+
+def _merge_dedup(existing: pd.DataFrame, incoming: pd.DataFrame, subset: list[str]) -> pd.DataFrame:
+    if existing.empty:
+        merged = incoming.copy()
+    elif incoming.empty:
+        merged = existing.copy()
+    else:
+        merged = pd.concat([existing, incoming], ignore_index=True)
+    usable_subset = [col for col in subset if col in merged.columns]
+    if usable_subset:
+        merged = merged.drop_duplicates(usable_subset, keep="last")
+    return merged.reset_index(drop=True)
+
+
+def append_predictions_incremental(pred: pd.DataFrame, out_dir: str | Path) -> pd.DataFrame:
+    out_dir = Path(out_dir)
+    path = out_dir / "predictions_validation.parquet"
+    existing = _read_parquet_if_exists(path)
+    merged = _merge_dedup(existing, pred, PREDICTION_DEDUP_COLUMNS)
+    _atomic_write_parquet(merged, path)
+    _atomic_write_parquet(merged, out_dir / "residual_predictions.parquet")
+    return merged
+
+
+def append_edges_incremental(edges: pd.DataFrame, out_dir: str | Path) -> pd.DataFrame:
+    out_dir = Path(out_dir)
+    path = out_dir / "graph_edges.csv"
+    existing = _read_csv_if_exists(path)
+    merged = _merge_dedup(existing, edges, EDGE_DEDUP_COLUMNS)
+    _atomic_write_csv(merged, path)
+    graph_stability(merged).to_csv(out_dir / "graph_stability.csv", index=False)
+    return merged
+
+
+def append_failure_incremental(failure: dict, out_dir: str | Path) -> pd.DataFrame:
+    out_dir = Path(out_dir)
+    path = out_dir / "failures.csv"
+    existing = _read_csv_if_exists(path, FAILURE_COLUMNS)
+    incoming = pd.DataFrame([failure], columns=FAILURE_COLUMNS)
+    merged = _merge_dedup(existing, incoming, ["config_id", "fold_id", "seed", "message"])
+    _atomic_write_csv(merged, path)
+    return merged
+
+
+def completed_run_keys(out_dir: str | Path) -> set[tuple[str, int, int]]:
+    pred = _read_parquet_if_exists(Path(out_dir) / "predictions_validation.parquet")
+    if pred.empty or not set(PREDICTION_RUN_KEY_COLUMNS).issubset(pred.columns):
+        return set()
+    unique = pred[PREDICTION_RUN_KEY_COLUMNS].drop_duplicates()
+    return {(str(row.config_id), int(row.fold_id), int(row.seed)) for row in unique.itertuples(index=False)}
+
+
+def expected_runs_per_config(mcfg: ModelConfig, cfg: dict, folds: list[int]) -> int:
+    if mcfg.model == "G3":
+        return len(folds)
+    return len(folds) * len(cfg["experiment"]["seeds"])
+
+
+def completed_config_ids(pred: pd.DataFrame, cfg: dict, folds: list[int]) -> set[str]:
+    if pred.empty or not set(PREDICTION_RUN_KEY_COLUMNS).issubset(pred.columns):
+        return set()
+    completed = set()
+    run_counts = pred[PREDICTION_RUN_KEY_COLUMNS].drop_duplicates().groupby("config_id").size()
+    config_lookup = {mcfg.config_id: mcfg for mcfg in enumerate_configs(cfg)}
+    for config_id, count in run_counts.items():
+        mcfg = config_lookup.get(str(config_id))
+        if mcfg is not None and int(count) >= expected_runs_per_config(mcfg, cfg, folds):
+            completed.add(str(config_id))
+    return completed
 
 
 def build_model_and_adjacency(mcfg: ModelConfig, samples, train_idx: np.ndarray, cfg: dict, seed: int):
@@ -247,38 +390,63 @@ def validation_fold_ids(cfg: dict) -> list[int]:
 def mode_train_validation(cfg: dict, device: torch.device, logger: logging.Logger) -> None:
     out_dir = Path(cfg["experiment"]["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
+    incremental = bool(cfg.get("search", {}).get("incremental_writes", True))
+    resume = bool(cfg["runtime"].get("resume", False))
+    folds = validation_fold_ids(cfg)
+    configs = enumerate_configs(cfg)
+    done = completed_run_keys(out_dir) if resume else set()
+    if resume and done:
+        logger.info("Resume enabled: %s completed config/fold/seed runs will be skipped.", len(done))
+    logger.info("Validation grid: configs=%s folds=%s seeds=%s incremental_writes=%s", len(configs), folds, cfg["experiment"]["seeds"], incremental)
     failures = []
     pred_frames, edge_frames = [], []
-    for mcfg in enumerate_configs(cfg):
-        for fold_id in validation_fold_ids(cfg):
+    for mcfg in configs:
+        for fold_id in folds:
             for seed in cfg["experiment"]["seeds"]:
                 if mcfg.model == "G3" and mcfg.graph_seed != seed:
+                    continue
+                run_key = (mcfg.config_id, int(fold_id), int(seed))
+                if resume and run_key in done:
+                    logger.info("Skipping completed %s fold=%s seed=%s", mcfg.config_id, fold_id, seed)
                     continue
                 start = time.time()
                 try:
                     pred, edges = train_one(mcfg, fold_id, int(seed), cfg, device, logger)
                     pred["runtime_seconds"] = time.time() - start
-                    pred_frames.append(pred)
-                    if not edges.empty:
-                        edge_frames.append(edges)
+                    if incremental:
+                        all_predictions = append_predictions_incremental(pred, out_dir)
+                        if not edges.empty:
+                            append_edges_incremental(edges, out_dir)
+                        write_metric_tables(all_predictions, out_dir)
+                        done.add(run_key)
+                    else:
+                        pred_frames.append(pred)
+                        if not edges.empty:
+                            edge_frames.append(edges)
                 except Exception as exc:
                     logger.exception("Failure in %s fold=%s seed=%s", mcfg.config_id, fold_id, seed)
-                    failures.append(
-                        {
-                            "model": mcfg.model,
-                            "config_id": mcfg.config_id,
-                            "fold_id": fold_id,
-                            "seed": seed,
-                            "message": str(exc),
-                        }
-                    )
-    predictions = pd.concat(pred_frames, ignore_index=True) if pred_frames else pd.DataFrame()
-    predictions.to_parquet(out_dir / "predictions_validation.parquet", index=False)
-    predictions.to_parquet(out_dir / "residual_predictions.parquet", index=False)
-    edges = pd.concat(edge_frames, ignore_index=True) if edge_frames else pd.DataFrame()
-    edges.to_csv(out_dir / "graph_edges.csv", index=False)
-    graph_stability(edges).to_csv(out_dir / "graph_stability.csv", index=False)
-    pd.DataFrame(failures, columns=["model", "config_id", "fold_id", "seed", "message"]).to_csv(out_dir / "failures.csv", index=False)
+                    failure = {
+                        "model": mcfg.model,
+                        "config_id": mcfg.config_id,
+                        "fold_id": fold_id,
+                        "seed": seed,
+                        "message": str(exc),
+                    }
+                    failures.append(failure)
+                    if incremental:
+                        append_failure_incremental(failure, out_dir)
+    if not incremental:
+        predictions = pd.concat(pred_frames, ignore_index=True) if pred_frames else pd.DataFrame()
+        _atomic_write_parquet(predictions, out_dir / "predictions_validation.parquet")
+        _atomic_write_parquet(predictions, out_dir / "residual_predictions.parquet")
+        edges = pd.concat(edge_frames, ignore_index=True) if edge_frames else pd.DataFrame()
+        _atomic_write_csv(edges, out_dir / "graph_edges.csv")
+        graph_stability(edges).to_csv(out_dir / "graph_stability.csv", index=False)
+        pd.DataFrame(failures, columns=FAILURE_COLUMNS).to_csv(out_dir / "failures.csv", index=False)
+    else:
+        predictions = _read_parquet_if_exists(out_dir / "predictions_validation.parquet")
+        if not (out_dir / "failures.csv").exists():
+            pd.DataFrame(columns=FAILURE_COLUMNS).to_csv(out_dir / "failures.csv", index=False)
     if not predictions.empty:
         write_metric_tables(predictions, out_dir)
 
@@ -289,9 +457,20 @@ def mode_select_config(cfg: dict, logger: logging.Logger) -> dict:
     if not pred_path.exists():
         raise Step4DataError("Run train-validation before select-config.")
     pred = pd.read_parquet(pred_path)
-    config_scores = pred.groupby(["model", "config_id"], as_index=False)["qlike_loss"].mean().sort_values("qlike_loss")
+    folds = validation_fold_ids(cfg)
+    complete_ids = completed_config_ids(pred, cfg, folds)
+    if not complete_ids:
+        raise Step4DataError(
+            "No fully completed validation configs are available. "
+            "Resume train-validation, reduce max_configs/quick_grid, or inspect predictions_validation.parquet manually."
+        )
+    partial_count = pred["config_id"].nunique() - len(complete_ids)
+    if partial_count > 0:
+        logger.info("Ignoring %s partially completed config(s) during selection.", partial_count)
+    pred_for_selection = pred.loc[pred["config_id"].isin(complete_ids)].copy()
+    config_scores = pred_for_selection.groupby(["model", "config_id"], as_index=False)["qlike_loss"].mean().sort_values("qlike_loss")
     best = config_scores.iloc[0].to_dict()
-    best_rows = pred.loc[pred["config_id"] == best["config_id"]]
+    best_rows = pred_for_selection.loc[pred_for_selection["config_id"] == best["config_id"]]
     best_epoch = int(best_rows["best_epoch"].median()) if "best_epoch" in best_rows else int(cfg["training"]["max_epochs"])
     best_doc = {
         "selection_rule": "minimum mean validation QLIKE; locked test not used",
@@ -299,6 +478,8 @@ def mode_select_config(cfg: dict, logger: logging.Logger) -> dict:
         "config_id": best["config_id"],
         "validation_qlike": float(best["qlike_loss"]),
         "refit_epochs": max(1, best_epoch + 1),
+        "completed_configs_considered": len(complete_ids),
+        "partially_completed_configs_ignored": int(max(partial_count, 0)),
     }
     with (out_dir / "best_static_graph_config.yaml").open("w", encoding="utf-8") as handle:
         yaml.safe_dump(best_doc, handle, sort_keys=False)
@@ -461,12 +642,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--no-amp", action="store_true")
+    parser.add_argument("--quick-grid", action="store_true", help="Use a small pilot grid without editing the YAML.")
+    parser.add_argument("--include-models", default=None, help="Comma-separated model IDs, e.g. G0,G1,G2,G5.")
+    parser.add_argument("--max-configs", type=int, default=None, help="Limit the number of config IDs enumerated after filtering.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
+    if bool(cfg.get("search", {}).get("quick_grid", False)) or args.quick_grid:
+        cfg = apply_quick_grid(cfg)
     if args.device is not None:
         cfg["runtime"]["device"] = args.device
     if args.num_workers is not None:
@@ -475,9 +661,21 @@ def main() -> None:
         cfg["runtime"]["resume"] = True
     if args.no_amp:
         cfg["runtime"]["use_amp"] = False
+    cfg.setdefault("search", {})
+    if args.include_models is not None:
+        cfg["search"]["include_models"] = [item.strip() for item in args.include_models.split(",") if item.strip()]
+    if args.max_configs is not None:
+        cfg["search"]["max_configs"] = int(args.max_configs)
     logger = setup_logger(cfg["experiment"]["log_dir"], args.mode)
     device = resolve_device(str(cfg["runtime"].get("device", "auto")))
-    logger.info("Step 4 mode=%s device=%s", args.mode, device)
+    logger.info(
+        "Step 4 mode=%s device=%s include_models=%s max_configs=%s quick_grid=%s",
+        args.mode,
+        device,
+        cfg.get("search", {}).get("include_models"),
+        cfg.get("search", {}).get("max_configs"),
+        cfg.get("search", {}).get("quick_grid", False),
+    )
     if args.mode in {"validate-data", "full"}:
         mode_validate_data(cfg, logger)
     if args.mode in {"train-validation", "full"}:

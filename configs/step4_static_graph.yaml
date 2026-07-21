@@ -13,6 +13,13 @@ runtime:
   deterministic: true
   resume: false
 
+search:
+  # Keep this small while iterating. Use [G0, G1, G2, G3, G4, G5] for the full research grid.
+  include_models: [G0, G1, G2, G5]
+  quick_grid: false
+  max_configs:
+  incremental_writes: true
+
 data:
   residual_state_path: data/processed/step3_residual_state.parquet
   residual_target_path: data/processed/step3_residual_targets.parquet

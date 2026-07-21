@@ -51,6 +51,19 @@ python -m src.graph.run_step4 \
   --device cpu
 ```
 
+Recommended pilot run after an interrupted full grid:
+
+```bash
+python -m src.graph.run_step4 \
+  --config configs/step4_static_graph.yaml \
+  --mode train-validation \
+  --device cuda \
+  --num-workers 8 \
+  --quick-grid \
+  --include-models G0,G1,G2,G5 \
+  --resume
+```
+
 GPU:
 
 ```bash
@@ -72,6 +85,28 @@ python -m src.graph.run_step4 \
   --resume
 ```
 
+The validation loop writes incrementally after every completed config/fold/seed run:
+
+- `results/step4/predictions_validation.parquet`
+- `results/step4/residual_predictions.parquet`
+- `results/step4/graph_edges.csv`
+- `results/step4/graph_stability.csv`
+- `results/step4/failures.csv`
+- metric tables under `results/step4`
+
+If the process is interrupted, rerun with `--resume`. Completed `(config_id, fold_id, seed)` runs already present in `predictions_validation.parquet` will be skipped.
+
+To restrict the search without editing YAML:
+
+```bash
+python -m src.graph.run_step4 \
+  --config configs/step4_static_graph.yaml \
+  --mode train-validation \
+  --device cuda \
+  --include-models G0,G1,G2,G5 \
+  --max-configs 12
+```
+
 Then select the best validation configuration:
 
 ```bash
@@ -79,6 +114,8 @@ python -m src.graph.run_step4 \
   --config configs/step4_static_graph.yaml \
   --mode select-config
 ```
+
+`select-config` only considers configurations that have completed all expected validation folds/seeds under the current grid. Partially completed configs are ignored to avoid selection bias.
 
 ## 5. Final locked-test workflow
 
