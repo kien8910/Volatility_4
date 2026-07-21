@@ -1,0 +1,4 @@
+selection_rule: least harmful Step 6 news branch on validation; locked test not used
+model: hierarchical_additive
+config_id: N__hierarchical_additive__all_dynamic__poolcls__dp32
+validation_qlike: 0.35019241179593946

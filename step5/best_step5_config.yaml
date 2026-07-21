@@ -1,0 +1,6 @@
+selection_rule: minimum validation QLIKE; locked test not used
+model: S5-B0
+config_id: S5-B0__K1__beta0__tau1__gh16__regnone__rw0
+validation_qlike: 0.3297680317814233
+refit_epochs: 1
+completed_configs_considered: 4

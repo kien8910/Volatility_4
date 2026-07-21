@@ -1,0 +1,34 @@
+event:
+- event_text_log_chars
+- event_text_log_words
+- event_category_count
+- is_dynamic_news
+- is_filing_context
+- hierarchy_macro
+- hierarchy_sector
+- hierarchy_target_company
+- hierarchy_related_company
+- hierarchy_filing
+- scope_macro
+- scope_sector
+- scope_firm_specific
+- scope_related_context
+- scope_filing_context
+- duplicate_frequency_to_date
+- days_since_same_text
+- news_novelty
+relation:
+- is_direct_target
+- is_same_ticker_context
+- static_graph_weight
+- static_graph_distance_clipped
+stock:
+- stock_prediction
+- stock_residual_prediction
+- abs_stock_residual_prediction
+- ticker_code
+- horizon_scaled
+market:
+- market_mean_prediction
+- market_prediction_dispersion
+- market_mean_abs_residual_pred
