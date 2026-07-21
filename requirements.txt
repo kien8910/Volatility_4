@@ -11,3 +11,4 @@ networkx
 tqdm
 psutil
 pytest
+transformers

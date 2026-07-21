@@ -1,0 +1,116 @@
+experiment:
+  name: semiconductor_step6_naive_news
+  output_dir: results/step6
+  checkpoint_dir: checkpoints/step6
+  log_dir: logs/step6
+  seeds: [42, 123, 2026, 3407, 9999]
+
+runtime:
+  device: auto
+  use_amp: true
+  num_workers: 4
+  pin_memory: true
+  deterministic: true
+  resume: false
+
+search:
+  include_models: [stock_only, concatenation, hierarchical_additive, heterogeneous]
+  include_ablations:
+    - all_dynamic
+    - all_including_filing
+    - macro_only
+    - sector_only
+    - target_company_only
+    - related_company_only
+    - filing_only
+  pooling_methods: [cls, mean]
+  quick_grid: false
+  max_configs:
+  incremental_writes: true
+
+data:
+  panel_path: data/processed/fintexts_step0_panel.parquet
+  news_long_path: data/processed/fintexts_news_long.parquet
+  residual_state_path: data/processed/step3_residual_state.parquet
+  residual_target_path: data/processed/step3_residual_targets.parquet
+  p_prediction_path: results/step3/oos_p_predictions.parquet
+  split_manifest_path: data/splits/split_manifest.csv
+  fold_manifest_path: data/splits/expanding_folds.csv
+  step4_config_path: results/step4/best_static_graph_config.yaml
+  step4_checkpoint_dir: checkpoints/step4
+  tickers:
+    - ADI
+    - AMAT
+    - AMD
+    - AVGO
+    - INTC
+    - KLAC
+    - LRCX
+    - MU
+    - NVDA
+    - QCOM
+    - TXN
+
+target:
+  horizons: [1, 5, 10, 22]
+  epsilon: 1.0e-12
+
+stock_backbone:
+  model: G5
+  temporal_encoder: small_tcn
+  graph_type: learned_static
+  graph_layer: gcn
+  freeze: true
+  reproduce_step4_before_training: true
+  expected_step4_tolerance: 0.02
+
+text_encoder:
+  model_name: ProsusAI/finbert
+  freeze: true
+  pooling_options: [cls, mean]
+  max_length: 256
+  batch_size: 64
+  cache_dir: data/embeddings/step6
+  normalize_embeddings: false
+
+news:
+  hierarchies:
+    - macro
+    - sector
+    - target_company
+    - related_company
+    - filing
+  treat_filing_as_context: true
+  zero_vector_for_missing: true
+  include_missing_masks: true
+  include_news_counts: true
+  forward_fill_dynamic_news: false
+
+fusion:
+  projection_dims: [32, 64]
+  fusion_hidden_dims: [64, 32]
+  dropout: 0.1
+
+training:
+  freeze_stock_backbone: true
+  freeze_text_encoder: true
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 100
+  early_stopping_patience: 12
+  gradient_clip_norm: 1.0
+  loss: mse
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+  joint_finetune_ablation: false
+  joint_finetune_learning_rate: 0.00001
+
+evaluation:
+  primary_metric: qlike
+  spike_quantiles: [0.90, 0.95]
+  spike_quantile: 0.90
+  bootstrap_block_length: 22
+  clip_logvol_min: -20.0
+  clip_logvol_max: 20.0
+  improvement_threshold: 0.0
