@@ -550,8 +550,8 @@ def mode_evaluate_test(cfg: dict, device: torch.device, logger: logging.Logger) 
         test_loader = make_loader(test_ds, cfg, shuffle=False)
         model, _ = build_model_and_adjacency(mcfg, samples, idx["development"], cfg, int(seed))
         ckpt = Path(cfg["experiment"]["checkpoint_dir"]) / "final" / mcfg.config_id / f"seed_{seed}" / "best.pt"
-        load_checkpoint(ckpt, model, map_location=device)
         model.to(device)
+        load_checkpoint(ckpt, model, map_location=device)
         raw = predict_loader(model, test_loader, device, bool(cfg["runtime"].get("use_amp", False)), {**cfg.get("evaluation", {}), "epsilon": cfg.get("target", {}).get("epsilon", 1e-12)})
         pred = flatten_predictions(raw, samples, samples.tickers, samples.horizons, "test", -1, int(seed), mcfg.model, float(cfg["evaluation"].get("spike_quantile", 0.90)))
         pred["config_id"] = mcfg.config_id

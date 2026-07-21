@@ -100,6 +100,7 @@ def train_model(
     start_epoch = 0
     best_metric = float("inf")
     best_epoch = -1
+    model.to(device)
     if resume and last_path.exists():
         checkpoint = load_checkpoint(last_path, model, optimizer, scheduler, map_location=device)
         start_epoch = int(checkpoint["epoch"]) + 1
@@ -108,7 +109,6 @@ def train_model(
         logger.info("Resumed checkpoint %s at epoch %s", last_path, start_epoch)
 
     epochs_without_improvement = 0
-    model.to(device)
     for epoch in tqdm(range(start_epoch, max_epochs), desc=f"train {hyperparameters['model_id']} seed={seed}", leave=False):
         model.train()
         for batch in train_loader:
@@ -164,4 +164,3 @@ def train_model(
             if epochs_without_improvement >= patience:
                 break
     return TrainResult(best_metric=best_metric, best_epoch=best_epoch, last_epoch=epoch, checkpoint_path=best_path)
-
