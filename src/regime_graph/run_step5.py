@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pandas.errors import EmptyDataError
 import torch
 import yaml
 from torch.utils.data import DataLoader
@@ -74,6 +75,18 @@ class Step5RunConfig:
 PRED_DEDUP_COLUMNS = ["config_id", "split", "fold_id", "seed", "date", "target_date", "ticker", "horizon"]
 EDGE_DEDUP_COLUMNS = ["config_id", "fold_id", "seed", "regime", "source", "target"]
 FAILURE_COLUMNS = ["model", "config_id", "fold_id", "seed", "message"]
+GRAPH_DIVERSITY_COLUMNS = [
+    "config_id",
+    "model",
+    "fold_id",
+    "seed",
+    "regime_a",
+    "regime_b",
+    "frobenius_distance",
+    "cosine_similarity",
+    "spearman_correlation",
+    "topk_jaccard",
+]
 
 
 def setup_logger(log_dir: str | Path, mode: str) -> logging.Logger:
@@ -197,7 +210,12 @@ def _read_parquet(path: str | Path) -> pd.DataFrame:
 
 def _read_csv(path: str | Path, columns: list[str] | None = None) -> pd.DataFrame:
     path = Path(path)
-    return pd.read_csv(path) if path.exists() else pd.DataFrame(columns=columns)
+    if not path.exists() or path.stat().st_size == 0:
+        return pd.DataFrame(columns=columns)
+    try:
+        return pd.read_csv(path)
+    except EmptyDataError:
+        return pd.DataFrame(columns=columns)
 
 
 def merge_dedup(existing: pd.DataFrame, incoming: pd.DataFrame, subset: list[str]) -> pd.DataFrame:
@@ -206,8 +224,18 @@ def merge_dedup(existing: pd.DataFrame, incoming: pd.DataFrame, subset: list[str
     return merged.drop_duplicates(usable, keep="last").reset_index(drop=True) if usable else merged.reset_index(drop=True)
 
 
-def append_table(df: pd.DataFrame, path: str | Path, subset: list[str], parquet: bool) -> pd.DataFrame:
-    existing = _read_parquet(path) if parquet else _read_csv(path)
+def append_table(df: pd.DataFrame, path: str | Path, subset: list[str], parquet: bool, columns: list[str] | None = None) -> pd.DataFrame:
+    if df.empty and len(df.columns) == 0:
+        existing = _read_parquet(path) if parquet else _read_csv(path, columns=columns)
+        if not Path(path).exists() and columns is not None:
+            empty = pd.DataFrame(columns=columns)
+            if parquet:
+                _atomic_write_parquet(empty, path)
+            else:
+                _atomic_write_csv(empty, path)
+            return empty
+        return existing
+    existing = _read_parquet(path) if parquet else _read_csv(path, columns=columns)
     merged = merge_dedup(existing, df, subset)
     if parquet:
         _atomic_write_parquet(merged, path)
@@ -339,7 +367,7 @@ def mode_train_validation(cfg: dict, device: torch.device, logger: logging.Logge
                     all_pred = append_table(pred, out_dir / "predictions_validation.parquet", PRED_DEDUP_COLUMNS, parquet=True)
                     append_table(all_pred, out_dir / "residual_predictions.parquet", PRED_DEDUP_COLUMNS, parquet=True)
                     append_table(edges, out_dir / "graph_edges.csv", EDGE_DEDUP_COLUMNS, parquet=False)
-                    append_table(diversity, out_dir / "graph_diversity.csv", ["config_id", "fold_id", "seed", "regime_a", "regime_b"], parquet=False)
+                    append_table(diversity, out_dir / "graph_diversity.csv", ["config_id", "fold_id", "seed", "regime_a", "regime_b"], parquet=False, columns=GRAPH_DIVERSITY_COLUMNS)
                     state_frame.to_parquet(out_dir / "state_features.parquet", index=False)
                     write_step5_metric_tables(all_pred, out_dir)
                     regime_usage_from_predictions(all_pred).to_csv(out_dir / "regime_usage.csv", index=False)
@@ -518,4 +546,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

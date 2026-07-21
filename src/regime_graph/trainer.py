@@ -44,6 +44,14 @@ def amp_context(device: torch.device, enabled: bool):
     return torch.autocast(device_type=device.type, enabled=enabled and device.type == "cuda")
 
 
+def make_grad_scaler(device: torch.device, enabled: bool):
+    active = enabled and device.type == "cuda"
+    try:
+        return torch.amp.GradScaler("cuda", enabled=active)
+    except (AttributeError, TypeError):
+        return torch.cuda.amp.GradScaler(enabled=active)
+
+
 def predict_step5_loader(model, loader: DataLoader, device: torch.device, use_amp: bool, metric_cfg: dict) -> dict[str, np.ndarray]:
     model.eval()
     residual_pred, residual_actual, actual, p_pred, sample_idx = [], [], [], [], []
@@ -116,7 +124,7 @@ def train_step5_model(
     best_path = checkpoint_dir / "best.pt"
     last_path = checkpoint_dir / "last.pt"
     use_amp = bool(cfg["runtime"].get("use_amp", False))
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp and device.type == "cuda")
+    scaler = make_grad_scaler(device, use_amp)
     model.to(device)
     start_epoch = 0
     best_metric = float("inf")
@@ -167,4 +175,3 @@ def train_step5_model(
             if epochs_without_improvement >= patience:
                 break
     return Step5TrainResult(best_metric=best_metric, best_epoch=best_epoch, last_epoch=epoch, checkpoint_path=best_path)
-
