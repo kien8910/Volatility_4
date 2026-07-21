@@ -121,11 +121,22 @@ def train_step6_model(
     best_metric = float("inf")
     best_epoch = -1
     if resume and last_path.exists():
-        checkpoint = load_step6_checkpoint(last_path, model, optimizer, scheduler, map_location=device)
-        start_epoch = int(checkpoint["epoch"]) + 1
-        best_metric = float(checkpoint["best_validation_metric"])
-        best_epoch = int(checkpoint.get("best_epoch", -1))
-        logger.info("Resumed Step 6 checkpoint %s at epoch %s", last_path, start_epoch)
+        checkpoint_meta = torch.load(last_path, map_location="cpu", weights_only=False)
+        checkpoint_config_id = str(checkpoint_meta.get("run_config", {}).get("config_id", ""))
+        current_config_id = str(run_config.get("config_id", ""))
+        if checkpoint_config_id and checkpoint_config_id != current_config_id:
+            logger.warning(
+                "Ignoring incompatible Step 6 checkpoint %s: checkpoint config_id=%s current config_id=%s",
+                last_path,
+                checkpoint_config_id,
+                current_config_id,
+            )
+        else:
+            checkpoint = load_step6_checkpoint(last_path, model, optimizer, scheduler, map_location=device)
+            start_epoch = int(checkpoint["epoch"]) + 1
+            best_metric = float(checkpoint["best_validation_metric"])
+            best_epoch = int(checkpoint.get("best_epoch", -1))
+            logger.info("Resumed Step 6 checkpoint %s at epoch %s", last_path, start_epoch)
     epochs_without_improvement = 0
     last_epoch = start_epoch - 1
     for epoch in tqdm(range(start_epoch, max_epochs), desc=f"train {run_config['config_id']} seed={seed}", leave=False):
@@ -161,4 +172,3 @@ def train_step6_model(
             if epochs_without_improvement >= patience:
                 break
     return Step6TrainResult(best_metric, best_epoch, last_epoch, best_path)
-

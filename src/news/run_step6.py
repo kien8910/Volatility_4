@@ -331,7 +331,7 @@ def train_or_predict_one(run_cfg: Step6ModelConfig, fold_id: int, seed: int, cfg
             factor=float(cfg["training"].get("scheduler_factor", 0.5)),
             patience=int(cfg["training"].get("scheduler_patience", 5)),
         )
-        ckpt_dir = Path(cfg["experiment"]["checkpoint_dir"]) / run_cfg.model / run_cfg.ablation / run_cfg.pooling_method / f"fold_{fold_id}" / f"seed_{seed}"
+        ckpt_dir = Path(cfg["experiment"]["checkpoint_dir"]) / run_cfg.config_id / f"fold_{fold_id}" / f"seed_{seed}"
         result = train_step6_model(
             model,
             train_loader,
@@ -375,7 +375,7 @@ def mode_validate_data(cfg: dict, logger: logging.Logger) -> None:
 
 
 def mode_build_embeddings(cfg: dict, device: torch.device, logger: logging.Logger) -> None:
-    frame = ensure_embeddings(cfg, device, logger)
+    frame = ensure_embeddings(cfg, device, logger, list(cfg.get("search", {}).get("pooling_methods") or cfg["text_encoder"].get("pooling_options", ["cls"])))
     out_dir = Path(cfg["experiment"]["output_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
     embedding_statistics(frame).to_csv(out_dir / "embedding_statistics.csv", index=False)
@@ -489,7 +489,7 @@ def mode_train_final(cfg: dict, device: torch.device, logger: logging.Logger) ->
             continue
         optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=float(final_cfg["training"]["learning_rate"]), weight_decay=float(final_cfg["training"]["weight_decay"]))
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min")
-        ckpt_dir = Path(final_cfg["experiment"]["checkpoint_dir"]) / "final" / run_cfg.model / run_cfg.ablation / run_cfg.pooling_method / f"seed_{seed}"
+        ckpt_dir = Path(final_cfg["experiment"]["checkpoint_dir"]) / "final" / run_cfg.config_id / f"seed_{seed}"
         train_step6_model(model, loader, loader, optimizer, scheduler, device, final_cfg, ckpt_dir, run_cfg.as_dict(), int(seed), samples.tickers, scaler.state_dict(), resume=bool(final_cfg["runtime"].get("resume", False)), logger=logger)
 
 
@@ -509,7 +509,7 @@ def mode_evaluate_test(cfg: dict, device: torch.device, logger: logging.Logger) 
         loader = make_loader(test_ds, cfg, shuffle=False)
         model = make_step6_model(cfg, run_cfg, backbone, int(news.embeddings.shape[-1]), len(news.control_columns)).to(device)
         if run_cfg.model != "stock_only":
-            ckpt = Path(cfg["experiment"]["checkpoint_dir"]) / "final" / run_cfg.model / run_cfg.ablation / run_cfg.pooling_method / f"seed_{seed}" / "best.pt"
+            ckpt = Path(cfg["experiment"]["checkpoint_dir"]) / "final" / run_cfg.config_id / f"seed_{seed}" / "best.pt"
             load_step6_checkpoint(ckpt, model, map_location=device)
         raw = predict_step6_loader(model, loader, device, bool(cfg["runtime"].get("use_amp", False)), {**cfg["evaluation"], "epsilon": cfg["target"]["epsilon"]})
         frames.append(flatten_step6_predictions(raw, samples, news.coverage, "test", -1, int(seed), run_cfg.as_dict(), spike_threshold_for_indices(samples, idx["development"], float(cfg["evaluation"].get("spike_quantile", 0.90)))))
@@ -534,7 +534,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--include-models", default=None)
+    parser.add_argument("--include-ablations", default=None)
+    parser.add_argument("--pooling-methods", default=None)
+    parser.add_argument("--projection-dims", default=None)
     parser.add_argument("--max-configs", type=int, default=None)
+    parser.add_argument("--max-epochs", type=int, default=None)
+    parser.add_argument("--patience", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--quick-grid", action="store_true")
     parser.add_argument("--seeds", default=None)
     parser.add_argument("--text-model", default=None)
@@ -556,8 +562,20 @@ def main() -> None:
         cfg["runtime"]["resume"] = True
     if args.include_models:
         cfg["search"]["include_models"] = parse_csv(args.include_models)
+    if args.include_ablations:
+        cfg["search"]["include_ablations"] = parse_csv(args.include_ablations)
+    if args.pooling_methods:
+        cfg["search"]["pooling_methods"] = parse_csv(args.pooling_methods)
+    if args.projection_dims:
+        cfg["fusion"]["projection_dims"] = [int(x) for x in parse_csv(args.projection_dims)]
     if args.max_configs is not None:
         cfg["search"]["max_configs"] = int(args.max_configs)
+    if args.max_epochs is not None:
+        cfg["training"]["max_epochs"] = int(args.max_epochs)
+    if args.patience is not None:
+        cfg["training"]["early_stopping_patience"] = int(args.patience)
+    if args.batch_size is not None:
+        cfg["training"]["batch_size"] = int(args.batch_size)
     if args.quick_grid:
         cfg["search"]["quick_grid"] = True
     if args.seeds:
