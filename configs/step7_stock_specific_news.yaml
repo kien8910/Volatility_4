@@ -16,8 +16,16 @@ runtime:
 pilot:
   enabled: true
   max_runs: 4
-  max_events_per_date: 8
-  max_pairs: 120000
+  # Keep a small but balanced daily sample. The old single cap could accidentally
+  # keep only macro/related events and drop target-company/sector events.
+  max_events_per_date:
+  max_events_per_date_by_hierarchy:
+    macro: 2
+    sector: 2
+    target_company: 6
+    related_company: 2
+    filing: 1
+  max_pairs: 240000
   run_placebos: false
 
 data:

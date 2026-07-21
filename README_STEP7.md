@@ -7,6 +7,7 @@ The default config [configs/step7_stock_specific_news.yaml](configs/step7_stock_
 - one seed: `42`
 - small model set: `S0_StockOnly_G5`, `S2_FixedSmallGate`, `S4_FactorizedGate`
 - small gate probabilities: `0.05`, `0.10`
+- balanced per-hierarchy event caps, so macro, sector, target-company, and related-company events are all represented
 - capped event-stock pairs
 - no locked-test evaluation
 - no full placebo suite unless requested
@@ -83,6 +84,8 @@ python -m src.stock_news_impact.run_step7 --config configs/step7_stock_specific_
 - `results/step7/metrics_by_fold_seed.csv`
 - `results/step7/oracle_diagnostics.csv`
 - `results/step7/did_diagnostics.csv`
+- `results/step7/common_news_impact.csv`
+- `results/step7/common_news_impact.parquet`
 - `results/step7/placebo_results.csv`
 - `reports/step7_stock_specific_news_report.md`
 
@@ -96,3 +99,18 @@ Use this pilot only to decide whether Step 7 is worth expanding. A promising pil
 - real assignment better than simple placebo diagnostics.
 
 If the best gated model is still worse than stock-only, keep the final model as Step 4 G5.
+
+## Macro/sector common-impact diagnostic
+
+Macro and sector events are broadcast to all 11 semiconductor stocks, but their impact is evaluated cross-sectionally rather than treated as 11 independent firm-specific events.
+
+`common_news_impact.csv` reports, by model/config/hierarchy/horizon:
+
+- number of common events;
+- average common gated correction across stocks;
+- average absolute cross-stock correction;
+- same-sign rate across stocks;
+- commonality ratio: `abs(mean correction across stocks) / mean(abs correction across stocks))`;
+- mean utility and abnormal response.
+
+A macro/sector event looks more like a real common industry shock when many stocks move in the same direction and the commonality ratio is high. This is still a predictive diagnostic, not causal evidence.

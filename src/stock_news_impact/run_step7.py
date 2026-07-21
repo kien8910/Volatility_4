@@ -14,7 +14,7 @@ from src.graph import SEMICONDUCTOR_TICKERS
 from src.graph.data_loader import load_config
 from src.graph.reproducibility import resolve_device, seed_everything
 from src.stock_news_impact.abnormal_response import build_abnormal_response
-from src.stock_news_impact.diagnostics import gate_diagnostics
+from src.stock_news_impact.diagnostics import common_news_impact_diagnostics, gate_diagnostics
 from src.stock_news_impact.event_builder import build_news_events, load_news_features_for_step7, validate_events
 from src.stock_news_impact.event_features_builder import build_gate_feature_frame
 from src.stock_news_impact.event_stock_pairs import build_event_stock_pairs, validate_pairs
@@ -82,9 +82,23 @@ def mode_build_events(cfg: dict, logger: logging.Logger) -> pd.DataFrame:
     features = load_news_features_for_step7(cfg)
     events = build_news_events(features, cfg)
     validate_events(events)
-    max_events = int(cfg.get("pilot", {}).get("max_events_per_date", 0) or 0)
-    if max_events > 0:
-        events = events.groupby("date", group_keys=False).head(max_events).reset_index(drop=True)
+    hierarchy_caps = cfg.get("pilot", {}).get("max_events_per_date_by_hierarchy") or {}
+    if hierarchy_caps:
+        capped = []
+        for hierarchy, cap in hierarchy_caps.items():
+            sub = events.loc[events["hierarchy"].astype(str).eq(str(hierarchy))]
+            if cap is not None:
+                sub = sub.groupby("date", group_keys=False).head(int(cap))
+            capped.append(sub)
+        configured = set(str(k) for k in hierarchy_caps)
+        uncapped = events.loc[~events["hierarchy"].astype(str).isin(configured)]
+        if not uncapped.empty:
+            capped.append(uncapped)
+        events = pd.concat(capped, ignore_index=True).sort_values(["date", "hierarchy", "event_id"]).reset_index(drop=True)
+    else:
+        max_events = int(cfg.get("pilot", {}).get("max_events_per_date", 0) or 0)
+        if max_events > 0:
+            events = events.groupby("date", group_keys=False).head(max_events).reset_index(drop=True)
     atomic_parquet(events, "data/processed/step7_news_events.parquet")
     atomic_parquet(events, out_dir / "step7_news_events.parquet")
     logger.info("Built Step 7 events rows=%s", len(events))
@@ -194,6 +208,9 @@ def mode_train_gate(cfg: dict, device: torch.device, logger: logging.Logger) -> 
     atomic_parquet(event_df[["event_id", "date", "target_date", "source_ticker", "target_ticker", "hierarchy", "event_scope", "horizon", "split", "fold_id", "seed", "model", "is_direct_target", "static_graph_weight", "static_graph_distance", "news_correction", "gated_correction", "utility", "utility_label", "placebo_type"]], out_dir / "event_stock_corrections.parquet")
     atomic_parquet(pred_df, out_dir / "predictions_validation.parquet")
     atomic_csv(gate_diagnostics(event_df), out_dir / "utility_diagnostics.csv")
+    common_detail, common_summary = common_news_impact_diagnostics(event_df)
+    atomic_parquet(common_detail, out_dir / "common_news_impact.parquet")
+    atomic_csv(common_summary, out_dir / "common_news_impact.csv")
     atomic_csv(pd.DataFrame(failures, columns=["model", "config_id", "fold_id", "seed", "message"]), out_dir / "failures.csv")
     if not pred_df.empty:
         tables = write_metrics(pred_df, out_dir)
