@@ -57,6 +57,15 @@ def atomic_csv(df: pd.DataFrame, path: str | Path) -> None:
     tmp.replace(path)
 
 
+def atomic_yaml(doc: dict, path: str | Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.stem}.tmp{path.suffix}")
+    with tmp.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(doc, handle, sort_keys=False)
+    tmp.replace(path)
+
+
 def load_step6_predictions(cfg: dict) -> pd.DataFrame:
     path = Path(cfg["data"]["step6_predictions_path"])
     if not path.exists():
@@ -69,6 +78,27 @@ def load_step6_predictions(cfg: dict) -> pd.DataFrame:
 
 def should_force_rebuild(cfg: dict) -> bool:
     return bool(cfg.get("runtime", {}).get("force_rebuild", False))
+
+
+def _uses_utility_context_gate(cfg: dict) -> bool:
+    models = cfg.get("search", {}).get("include_models") or []
+    return "S5_UtilityFactorizedGate" in [str(model) for model in models]
+
+
+def feature_columns_compatible(frame: pd.DataFrame, columns: dict | None, cfg: dict) -> bool:
+    if not isinstance(columns, dict):
+        return False
+    for group in ["event", "relation", "stock", "market"]:
+        values = columns.get(group)
+        if not isinstance(values, list) or any(col not in frame.columns for col in values):
+            return False
+    if _uses_utility_context_gate(cfg):
+        values = columns.get("utility_context")
+        if not isinstance(values, list) or not values:
+            return False
+        if any(col not in frame.columns for col in values):
+            return False
+    return True
 
 
 def event_summary(events: pd.DataFrame) -> pd.DataFrame:
@@ -171,6 +201,7 @@ def mode_build_features(cfg: dict, logger: logging.Logger) -> tuple[pd.DataFrame
     atomic_parquet(abnormal, out_dir / "abnormal_volatility_response.parquet")
     frame, columns = build_gate_feature_frame(events, pairs, pred, selected, cfg)
     atomic_parquet(frame, out_dir / "gate_features.parquet")
+    atomic_yaml(columns, out_dir / "feature_columns.yaml")
     train_utility = frame.loc[frame["utility_label"].astype(int).ne(-1)].copy()
     atomic_parquet(train_utility, out_dir / "utility_labels_train.parquet")
     atomic_csv(oracle_diagnostic(frame), out_dir / "oracle_diagnostics.csv")
@@ -231,9 +262,12 @@ def mode_train_gate(cfg: dict, device: torch.device, logger: logging.Logger) -> 
     if (out_dir / "gate_features.parquet").exists() and (out_dir / "feature_columns.yaml").exists() and not should_force_rebuild(cfg):
         frame = pd.read_parquet(out_dir / "gate_features.parquet")
         columns = yaml.safe_load((out_dir / "feature_columns.yaml").read_text(encoding="utf-8"))
+        if not feature_columns_compatible(frame, columns, cfg):
+            logger.warning("Existing Step 7 feature_columns.yaml is stale or incompatible with gate_features.parquet; rebuilding features.")
+            frame, columns = mode_build_features(cfg, logger)
     else:
         frame, columns = mode_build_features(cfg, logger)
-    yaml.safe_dump(columns, (out_dir / "feature_columns.yaml").open("w", encoding="utf-8"), sort_keys=False)
+    atomic_yaml(columns, out_dir / "feature_columns.yaml")
     all_event_rows = []
     all_predictions = []
     failures = []
