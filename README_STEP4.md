@@ -64,6 +64,32 @@ python -m src.graph.run_step4 \
   --resume
 ```
 
+Pilot run with `SmallTCN` temporal encoder and explicit GCN graph layer:
+
+```bash
+python -m src.graph.run_step4 \
+  --config configs/step4_static_graph.yaml \
+  --mode train-validation \
+  --device cuda \
+  --num-workers 8 \
+  --quick-grid \
+  --include-models G0,G1,G2,G5 \
+  --temporal-options small_tcn \
+  --graph-layer gcn \
+  --top-k 2,3 \
+  --embedding-dims 8 \
+  --directed-options false \
+  --seeds 42,123 \
+  --max-epochs 80 \
+  --resume
+```
+
+Notes:
+
+- `G2` and `G5` already use the implemented GCN message-passing layer.
+- `--graph-layer gcn` is accepted to make the run explicit; Step 4 currently does not implement another graph layer.
+- Use `--temporal-options linear,small_tcn` if you want a compact side-by-side encoder comparison.
+
 GPU:
 
 ```bash

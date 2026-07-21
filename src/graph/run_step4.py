@@ -140,6 +140,58 @@ def apply_quick_grid(cfg: dict) -> dict:
     return quick_cfg
 
 
+def _parse_csv_strings(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _parse_csv_ints(value: str) -> list[int]:
+    return [int(item) for item in _parse_csv_strings(value)]
+
+
+def _parse_csv_bools(value: str) -> list[bool]:
+    parsed = []
+    for item in _parse_csv_strings(value):
+        lowered = item.lower()
+        if lowered in {"1", "true", "yes", "y"}:
+            parsed.append(True)
+        elif lowered in {"0", "false", "no", "n"}:
+            parsed.append(False)
+        else:
+            raise ValueError(f"Cannot parse boolean value: {item}")
+    return parsed
+
+
+def apply_cli_grid_overrides(cfg: dict, args: argparse.Namespace) -> dict:
+    """Apply small grid overrides after optional quick-grid expansion."""
+    out = yaml.safe_load(yaml.safe_dump(cfg))
+    out.setdefault("search", {})
+    if args.include_models is not None:
+        out["search"]["include_models"] = _parse_csv_strings(args.include_models)
+    if args.max_configs is not None:
+        out["search"]["max_configs"] = int(args.max_configs)
+    if args.seeds is not None:
+        out["experiment"]["seeds"] = _parse_csv_ints(args.seeds)
+    if args.lookbacks is not None:
+        out["window"]["lookbacks"] = _parse_csv_ints(args.lookbacks)
+    if args.temporal_options is not None:
+        out["temporal_encoder"]["options"] = _parse_csv_strings(args.temporal_options)
+    if args.loss_options is not None:
+        out["training"]["loss_options"] = _parse_csv_strings(args.loss_options)
+    if args.top_k is not None:
+        out["graph"]["top_k"] = _parse_csv_ints(args.top_k)
+    if args.embedding_dims is not None:
+        out["graph"]["embedding_dims"] = _parse_csv_ints(args.embedding_dims)
+    if args.directed_options is not None:
+        out["graph"]["directed_options"] = _parse_csv_bools(args.directed_options)
+    if args.graph_layer is not None:
+        if args.graph_layer != "gcn":
+            raise ValueError("Only graph_layer='gcn' is implemented in Step 4.")
+        out["graph"]["graph_layer"] = args.graph_layer
+    if args.max_epochs is not None:
+        out["training"]["max_epochs"] = int(args.max_epochs)
+    return out
+
+
 def load_validated_samples(cfg: dict, lookback: int):
     inputs = validate_inputs(load_inputs(cfg), list(cfg["data"]["tickers"]), list(cfg["target"]["horizons"]))
     panels = build_panels(inputs.residual_state, inputs.residual_targets, cfg["data"]["tickers"], cfg["target"]["horizons"])
@@ -645,6 +697,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--quick-grid", action="store_true", help="Use a small pilot grid without editing the YAML.")
     parser.add_argument("--include-models", default=None, help="Comma-separated model IDs, e.g. G0,G1,G2,G5.")
     parser.add_argument("--max-configs", type=int, default=None, help="Limit the number of config IDs enumerated after filtering.")
+    parser.add_argument("--seeds", default=None, help="Comma-separated seeds, e.g. 42,123.")
+    parser.add_argument("--lookbacks", default=None, help="Comma-separated lookbacks, e.g. 22,44.")
+    parser.add_argument("--temporal-options", default=None, help="Comma-separated encoders: linear,small_tcn.")
+    parser.add_argument("--loss-options", default=None, help="Comma-separated losses: mse,huber.")
+    parser.add_argument("--top-k", default=None, help="Comma-separated graph top-k values, e.g. 2,3.")
+    parser.add_argument("--embedding-dims", default=None, help="Comma-separated learned graph embedding dims, e.g. 8,16.")
+    parser.add_argument("--directed-options", default=None, help="Comma-separated booleans, e.g. false or true,false.")
+    parser.add_argument("--graph-layer", default=None, choices=["gcn"], help="Graph message passing layer. Step 4 currently implements gcn.")
+    parser.add_argument("--max-epochs", type=int, default=None, help="Override training.max_epochs.")
     return parser.parse_args()
 
 
@@ -653,6 +714,7 @@ def main() -> None:
     cfg = load_config(args.config)
     if bool(cfg.get("search", {}).get("quick_grid", False)) or args.quick_grid:
         cfg = apply_quick_grid(cfg)
+    cfg = apply_cli_grid_overrides(cfg, args)
     if args.device is not None:
         cfg["runtime"]["device"] = args.device
     if args.num_workers is not None:
@@ -661,11 +723,6 @@ def main() -> None:
         cfg["runtime"]["resume"] = True
     if args.no_amp:
         cfg["runtime"]["use_amp"] = False
-    cfg.setdefault("search", {})
-    if args.include_models is not None:
-        cfg["search"]["include_models"] = [item.strip() for item in args.include_models.split(",") if item.strip()]
-    if args.max_configs is not None:
-        cfg["search"]["max_configs"] = int(args.max_configs)
     logger = setup_logger(cfg["experiment"]["log_dir"], args.mode)
     device = resolve_device(str(cfg["runtime"].get("device", "auto")))
     logger.info(
@@ -675,6 +732,18 @@ def main() -> None:
         cfg.get("search", {}).get("include_models"),
         cfg.get("search", {}).get("max_configs"),
         cfg.get("search", {}).get("quick_grid", False),
+    )
+    logger.info(
+        "Grid overrides: seeds=%s lookbacks=%s temporal=%s losses=%s top_k=%s embedding_dims=%s directed=%s graph_layer=%s max_epochs=%s",
+        cfg["experiment"]["seeds"],
+        cfg["window"]["lookbacks"],
+        cfg["temporal_encoder"]["options"],
+        cfg["training"]["loss_options"],
+        cfg["graph"]["top_k"],
+        cfg["graph"]["embedding_dims"],
+        cfg["graph"]["directed_options"],
+        cfg["graph"].get("graph_layer", "gcn"),
+        cfg["training"]["max_epochs"],
     )
     if args.mode in {"validate-data", "full"}:
         mode_validate_data(cfg, logger)

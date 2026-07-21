@@ -1,8 +1,10 @@
 import pandas as pd
+from argparse import Namespace
 
 from src.graph.run_step4 import (
     append_edges_incremental,
     append_predictions_incremental,
+    apply_cli_grid_overrides,
     apply_quick_grid,
     completed_run_keys,
     enumerate_configs,
@@ -36,6 +38,34 @@ def test_quick_grid_shrinks_grid_to_pilot_defaults():
     assert cfg["window"]["lookbacks"] == [22]
     assert cfg["training"]["loss_options"] == ["mse"]
     assert cfg["graph"]["directed_options"] == [False]
+
+
+def test_cli_grid_overrides_allow_small_tcn_gcn_pilot():
+    args = Namespace(
+        include_models="G0,G1,G2,G5",
+        max_configs=6,
+        seeds="42,123",
+        lookbacks="22",
+        temporal_options="small_tcn",
+        loss_options="mse",
+        top_k="2,3",
+        embedding_dims="8",
+        directed_options="false",
+        graph_layer="gcn",
+        max_epochs=20,
+    )
+    cfg = apply_cli_grid_overrides(_base_cfg(), args)
+    assert cfg["search"]["include_models"] == ["G0", "G1", "G2", "G5"]
+    assert cfg["search"]["max_configs"] == 6
+    assert cfg["experiment"]["seeds"] == [42, 123]
+    assert cfg["window"]["lookbacks"] == [22]
+    assert cfg["temporal_encoder"]["options"] == ["small_tcn"]
+    assert cfg["training"]["loss_options"] == ["mse"]
+    assert cfg["graph"]["top_k"] == [2, 3]
+    assert cfg["graph"]["embedding_dims"] == [8]
+    assert cfg["graph"]["directed_options"] == [False]
+    assert cfg["graph"]["graph_layer"] == "gcn"
+    assert cfg["training"]["max_epochs"] == 20
 
 
 def test_incremental_predictions_are_deduplicated_and_resume_keys_are_available(tmp_path):
