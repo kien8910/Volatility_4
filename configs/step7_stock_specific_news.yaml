@@ -1,0 +1,108 @@
+experiment:
+  name: semiconductor_step7_stock_specific_news_pilot
+  output_dir: results/step7
+  checkpoint_dir: checkpoints/step7
+  log_dir: logs/step7
+  seeds: [42]
+
+runtime:
+  device: auto
+  use_amp: true
+  num_workers: 0
+  pin_memory: true
+  deterministic: true
+  resume: false
+
+pilot:
+  enabled: true
+  max_runs: 4
+  max_events_per_date: 8
+  max_pairs: 120000
+  run_placebos: false
+
+data:
+  panel_path: data/processed/fintexts_step0_panel.parquet
+  news_long_path: data/processed/fintexts_news_long.parquet
+  residual_state_path: data/processed/step3_residual_state.parquet
+  residual_target_path: data/processed/step3_residual_targets.parquet
+  p_prediction_path: results/step3/oos_p_predictions.parquet
+  split_manifest_path: data/splits/split_manifest.csv
+  fold_manifest_path: data/splits/expanding_folds.csv
+  step4_config_path: results/step4/best_static_graph_config.yaml
+  step4_checkpoint_dir: checkpoints/step4
+  step6_config_path: results/step6/best_naive_news_config.yaml
+  step6_predictions_path: results/step6/predictions_validation.parquet
+  step6_news_corrections_path: results/step6/news_corrections.parquet
+  step6_news_features_path: results/step6/news_features.parquet
+  embedding_cache_dir: data/embeddings/step6
+  tickers: [ADI, AMAT, AMD, AVGO, INTC, KLAC, LRCX, MU, NVDA, QCOM, TXN]
+
+target:
+  horizons: [1, 5, 10, 22]
+  epsilon: 1.0e-12
+
+branches:
+  freeze_stock_backbone: true
+  freeze_text_encoder: true
+  freeze_news_branch_stage_a: true
+  reproduce_step4_and_step6: true
+
+events:
+  deduplicate_macro: true
+  deduplicate_sector: true
+  deduplicate_filing: true
+  treat_filing_as_context: true
+  forward_fill_dynamic_news: false
+  infer_related_tickers: false
+  include_hierarchies: [macro, sector, target_company, related_company]
+
+search:
+  include_models: [S0_StockOnly_G5, S2_FixedSmallGate, S4_FactorizedGate]
+  fixed_gate_values: [0.05, 0.10]
+  initial_gate_probabilities: [0.10]
+  relevance_hidden_options:
+    - [32, 16]
+  spillover_modes: [target_only]
+  novelty_lookbacks: [5]
+  max_configs: 4
+
+gate:
+  reliability_hidden_dim: 32
+  horizon_embedding_dim: 8
+  dropout: 0.1
+  shared_across_tickers: true
+
+utility_supervision:
+  enabled_options: [false]
+  margin_quantiles: [0.25]
+  weights: [0.0]
+  ignore_ambiguous: true
+
+regularization:
+  usage_weights: [0.001]
+  correction_weights: [0.001]
+  sparsity_weights: [0.0]
+
+placebos:
+  wrong_ticker: true
+  random_ticker: false
+  random_ticker_seeds: [11]
+  time_shifts: [-2, 2]
+  random_news: false
+  broadcast: true
+  lead_lag: false
+
+training:
+  batch_size: 2048
+  gate_learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 20
+  early_stopping_patience: 4
+  gradient_clip_norm: 1.0
+
+evaluation:
+  primary_metric: qlike
+  spike_quantile: 0.90
+  bootstrap_block_length: 22
+  clip_logvol_min: -20.0
+  clip_logvol_max: 20.0
