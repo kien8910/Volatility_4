@@ -34,6 +34,9 @@ class FrozenFinancialTextEncoder:
         device: str | torch.device = "cpu",
         use_amp: bool = False,
         normalize_embeddings: bool = False,
+        revision: str | None = None,
+        cache_dir: str | None = None,
+        local_files_only: bool = False,
     ):
         try:
             from transformers import AutoModel, AutoTokenizer
@@ -48,8 +51,11 @@ class FrozenFinancialTextEncoder:
         self.device = torch.device(device)
         self.use_amp = bool(use_amp)
         self.normalize_embeddings = bool(normalize_embeddings)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name).to(self.device)
+        load_kwargs = {"local_files_only": bool(local_files_only)}
+        if revision: load_kwargs["revision"] = revision
+        if cache_dir: load_kwargs["cache_dir"] = cache_dir
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, **load_kwargs)
+        self.model = AutoModel.from_pretrained(model_name, **load_kwargs).to(self.device)
         self.model.eval()
         for param in self.model.parameters():
             param.requires_grad_(False)
@@ -102,5 +108,7 @@ def build_text_encoder(cfg: dict, device: str | torch.device):
         device=device,
         use_amp=bool(cfg["runtime"].get("use_amp", False)),
         normalize_embeddings=bool(cfg["text_encoder"].get("normalize_embeddings", False)),
+        revision=cfg["text_encoder"].get("revision"),
+        cache_dir=cfg["text_encoder"].get("hf_cache_dir"),
+        local_files_only=bool(cfg["text_encoder"].get("local_files_only", False)),
     )
-

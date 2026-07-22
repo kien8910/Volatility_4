@@ -1,0 +1,91 @@
+experiment:
+  name: sparse_target_company_late_fusion
+
+runtime:
+  device: auto
+  use_amp: true
+
+data:
+  baseline_predictions_path: results/step4/residual_predictions.parquet
+  baseline_config_path: results/step4/best_static_graph_config.yaml
+  baseline_seeds: [42]
+  news_long_path: data/processed/fintexts_news_long.parquet
+  leakage_quarantine_path: data/quarantine/leakage_candidates.parquet
+  locked_test_start: 2023-01-12
+  analysis_train_folds: [1, 2, 3]
+  analysis_validation_fold: 4
+  horizons: [1, 5]
+  tickers: [ADI, AMAT, AMD, AVGO, INTC, KLAC, LRCX, MU, NVDA, QCOM, TXN]
+
+information_cutoff:
+  # FinTexTS has no publication timestamps. One forecast session of lag is the safe default.
+  news_lag_sessions: 1
+  timestamp_column:
+  require_publication_timestamp: false
+  use_timestamp_cutoff_when_available: true
+  market_timezone: America/New_York
+  forecast_cutoff_local_time: "16:00"
+
+event_filter:
+  min_words: 8
+  max_words: 5000
+  require_catalyst_keyword: true
+  catalyst_keywords:
+    earnings: [earnings, revenue, profit, eps, quarter, fiscal]
+    guidance: [guidance, forecast, outlook, expects, estimate, revision]
+    regulatory: [regulator, regulatory, antitrust, investigation, approval, sanction]
+    ma: [acquire, acquisition, merger, takeover, deal]
+    supply_chain: [supply, shortage, shipment, capacity, factory, fab, export control]
+    product: [launch, product, chip, processor, gpu, delay, roadmap]
+    analyst: [upgrade, downgrade, price target, rating, analyst]
+    management: [ceo, cfo, resign, appoint, management, executive]
+
+text_encoder:
+  model_name: ProsusAI/finbert
+  revision:
+  pooling_method: cls
+  max_length: 256
+  batch_size: 64
+  normalize_embeddings: true
+  local_files_only: false
+  hf_cache_dir:
+  cache_dir: data/embeddings/sparse_target_text
+
+model:
+  hidden_dim: 32
+  stock_embedding_dim: 8
+  horizon_embedding_dim: 4
+  event_type_embedding_dim: 4
+  event_type_count: 16
+  top_k_events: 1
+  edge_gate_init_probability: 0.10
+  hurdle_init_probability: 0.05
+  alpha_init: 0.005
+  alpha_max: 0.05
+
+training:
+  seed: 42
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 30
+  early_stopping_patience: 5
+  minimum_improvement: 1.0e-7
+  gradient_clip_norm: 1.0
+  impact_label_quantile: 0.80
+
+regularization:
+  hurdle_bce_weight: 0.02
+  correction_l2_weight: 0.001
+  gate_mean_weight: 0.0005
+
+placebo:
+  seed: 142
+  mode: within_day_payload_shuffle
+
+selection:
+  minimum_improved_tickers: 2
+  max_event_selection_rate: 0.75
+
+output:
+  directory: results/sparse_target_text
+  checkpoint_directory: checkpoints/sparse_target_text
