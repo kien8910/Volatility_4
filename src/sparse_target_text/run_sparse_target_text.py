@@ -85,7 +85,7 @@ def run(cfg: dict, mode: str, device_name: str, include_locked_test: bool = Fals
             if selected.get("config_fingerprint") != _config_fingerprint(cfg):
                 raise ValueError("Current config differs from the frozen validation-selected config")
         baseline, events = _load(cfg, include_test=include_test, require_embeddings=False)
-        cache = build_event_embedding_cache(events.loc[events.basic_filter_pass], cfg, str(device))
+        cache = build_event_embedding_cache(events, cfg, str(device))
         print({"cached_rows": len(cache), "locked_test_included": include_test}); return
     if mode == "train-validation":
         baseline, events = _load(cfg, include_test=False, require_embeddings=True)

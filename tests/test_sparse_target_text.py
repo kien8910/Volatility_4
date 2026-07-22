@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import torch
 
+from src.news.embedding_cache import EmbeddingCache
 from src.sparse_target_text.chunking import tokenizer_chunk_events
-from src.sparse_target_text.data import _effective_dates, shuffle_event_payload_within_day
+from src.sparse_target_text.data import (attach_embeddings_and_novelty, _effective_dates,
+                                         shuffle_event_payload_within_day)
 from src.sparse_target_text.filtering import hard_filter_events
 from src.sparse_target_text.losses import sparse_hurdle_loss
 from src.sparse_target_text.models import SparseHurdleCorrector, segment_topk_mask
@@ -91,3 +93,30 @@ def test_hard_filter_preserves_direct_target_semantics():
     out = hard_filter_events(event, minimal_cfg())
     assert out.entity_relevance.iloc[0] == 1.0
     assert out.timestamp_confidence.iloc[0] == 0.0
+
+
+def test_embedding_attach_ignores_events_rejected_by_basic_filter(tmp_path, monkeypatch):
+    cfg = minimal_cfg()
+    cfg["text_encoder"].update({
+        "cache_dir": str(tmp_path), "model_name": "test-encoder", "pooling_method": "cls"
+    })
+    cache = pd.DataFrame({
+        "text_hash": ["eligible"], "hierarchy": ["target_company"],
+        "encoder_name": ["test-encoder"], "pooling_method": ["cls"], "max_length": [6],
+        "embedding_dim": [2], "embedding": [[1.0, 0.0]], "missing_mask": [0],
+        "created_at": [pd.Timestamp.utcnow().isoformat()],
+    })
+    EmbeddingCache(tmp_path).write(cache)
+    events = pd.DataFrame({
+        "event_id": ["e1", "e2"], "effective_date": pd.to_datetime(["2022-01-03"] * 2),
+        "ticker": ["AMD", "AMD"], "text": ["eligible text", "short"],
+        "text_hash": ["eligible", "rejected"], "basic_filter_pass": [True, False],
+    })
+    monkeypatch.setattr(
+        "src.sparse_target_text.data.tokenizer_chunk_events", lambda frame, _cfg: frame.copy()
+    )
+
+    attached = attach_embeddings_and_novelty(events, cfg)
+
+    assert attached.event_id.tolist() == ["e1"]
+    assert np.allclose(attached.embedding.iloc[0], [1.0, 0.0])

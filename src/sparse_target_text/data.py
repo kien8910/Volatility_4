@@ -162,12 +162,23 @@ def load_target_event_candidates(cfg: dict, baseline: pd.DataFrame) -> pd.DataFr
     return hard_filter_events(news, cfg)
 
 
+def _embedding_eligible_events(events: pd.DataFrame) -> pd.DataFrame:
+    """Return only events that can reach one of the text model variants."""
+    if "basic_filter_pass" not in events:
+        return events.copy()
+    eligible = events["basic_filter_pass"].fillna(False).astype(bool)
+    return events.loc[eligible].copy()
+
+
 def build_event_embedding_cache(events: pd.DataFrame, cfg: dict, device: str) -> pd.DataFrame:
     cache = EmbeddingCache(cfg["text_encoder"]["cache_dir"])
     existing = cache.read()
     encoder_name = str(cfg["text_encoder"]["model_name"]); pooling = str(cfg["text_encoder"]["pooling_method"])
     max_length = int(cfg["text_encoder"]["max_length"])
     tokenizer = load_tokenizer(cfg)
+    events = _embedding_eligible_events(events)
+    if events.empty:
+        raise ValueError("No events pass basic_filter_pass; no embeddings are required")
     events = tokenizer_chunk_events(events, cfg, tokenizer)
     request = events[["text_hash", "text"]].drop_duplicates("text_hash").copy()
     existing_keys = set()
@@ -192,6 +203,12 @@ def build_event_embedding_cache(events: pd.DataFrame, cfg: dict, device: str) ->
 
 
 def attach_embeddings_and_novelty(events: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    # Cache construction intentionally skips events rejected by the basic filter.
+    # Drop the same rows here so an unusable short/long item cannot look like an
+    # incomplete cache during training or placebo evaluation.
+    events = _embedding_eligible_events(events)
+    if events.empty:
+        raise ValueError("No events pass basic_filter_pass; text variants cannot be trained")
     events = tokenizer_chunk_events(events, cfg)
     cache = EmbeddingCache(cfg["text_encoder"]["cache_dir"]).read()
     encoder_name = str(cfg["text_encoder"]["model_name"]); pooling = str(cfg["text_encoder"]["pooling_method"])
@@ -202,8 +219,13 @@ def attach_embeddings_and_novelty(events: pd.DataFrame, cfg: dict) -> pd.DataFra
     out = events.merge(cache[["text_hash", "embedding", "embedding_dim"]].drop_duplicates("text_hash"),
                        on="text_hash", how="left", validate="many_to_one")
     if out.embedding.isna().any():
-        missing = int(out.embedding.isna().sum())
-        raise ValueError(f"{missing} event embeddings are missing; run --mode build-embedding-cache first")
+        missing_rows = out.loc[out.embedding.isna(), "text_hash"].astype(str)
+        sample = ", ".join(missing_rows.drop_duplicates().head(3))
+        raise ValueError(
+            f"{len(missing_rows)} eligible event embeddings "
+            f"({missing_rows.nunique()} unique hashes) are missing; "
+            f"sample hashes: {sample}. Run --mode build-embedding-cache first."
+        )
     vectors = np.stack(out.embedding.map(lambda x: np.asarray(x, dtype=np.float32)))
     normalized = vectors / np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), 1e-12)
     novelty = np.ones(len(out), dtype=np.float32)
