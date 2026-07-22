@@ -14,6 +14,7 @@ from .models import SparseHurdleCorrector
 STATE_COLUMNS = ["baseline_prediction", "stock_residual_prediction", "p_prediction", "market_mean_prediction",
                  "market_prediction_dispersion", "baseline_vs_market", "known_error_mean_5",
                  "known_abs_error_mean_5", "known_error_mean_22", "known_abs_error_mean_22"]
+_PREDICTION_ROW_ID = "prediction_row_id"
 
 
 def seed_everything(seed: int) -> None:
@@ -47,10 +48,17 @@ def _tensor_bundle(baseline: pd.DataFrame, events: pd.DataFrame, cfg: dict, devi
                    state_mean: np.ndarray | None = None, state_scale: np.ndarray | None = None,
                    event_type_map: dict[str, int] | None = None,
                    impact_thresholds: dict[int, float] | None = None) -> dict:
-    rows = baseline.reset_index(drop=True).copy(); rows["row_id"] = np.arange(len(rows))
-    edges = events.merge(rows[["date", "ticker", "horizon", "fold_id", "analysis_split", "row_id"]],
-                         left_on=["effective_date", "ticker"], right_on=["date", "ticker"], how="inner")
+    rows = baseline.reset_index(drop=True).copy(); rows[_PREDICTION_ROW_ID] = np.arange(len(rows), dtype=np.int64)
+    if _PREDICTION_ROW_ID in events:
+        raise ValueError(f"Event frame contains reserved column {_PREDICTION_ROW_ID}")
+    row_lookup = rows[["date", "ticker", "horizon", "fold_id", "analysis_split", _PREDICTION_ROW_ID]].rename(
+        columns={"date": "effective_date"}
+    )
+    edges = events.merge(row_lookup, on=["effective_date", "ticker"], how="inner", validate="many_to_many")
     if edges.empty: raise ValueError("No target-company events align to baseline rows")
+    edge_row = edges[_PREDICTION_ROW_ID].to_numpy(dtype=np.int64)
+    if edge_row.min() < 0 or edge_row.max() >= len(rows):
+        raise ValueError("Event-to-prediction row mapping is out of bounds")
     if state_mean is None or state_scale is None: state_mean, state_scale = _state_stats(rows)
     state = (rows[STATE_COLUMNS].to_numpy(np.float32) - state_mean) / state_scale
     ticker_map = {str(t): i for i, t in enumerate(cfg["data"]["tickers"])}
@@ -70,7 +78,7 @@ def _tensor_bundle(baseline: pd.DataFrame, events: pd.DataFrame, cfg: dict, devi
               "embedding": torch.as_tensor(np.stack(edges.embedding.map(lambda x: np.asarray(x, dtype=np.float32))), device=device),
               "event_meta": torch.as_tensor(event_meta, device=device),
               "event_type": torch.as_tensor(edges.event_type.astype(str).map(event_type_map).fillna(0).to_numpy(), dtype=torch.long, device=device),
-              "edge_row": torch.as_tensor(edges.row_id.to_numpy(), dtype=torch.long, device=device),
+              "edge_row": torch.as_tensor(edge_row, dtype=torch.long, device=device),
               "edge_train_mask": torch.as_tensor(edges.analysis_split.eq("train").to_numpy(), device=device),
               "row_state": torch.as_tensor(state, device=device),
               "row_stock": torch.as_tensor(rows.ticker.astype(str).map(ticker_map).to_numpy(), dtype=torch.long, device=device),
@@ -134,7 +142,7 @@ def fit_variant(variant: str, baseline: pd.DataFrame, all_events: pd.DataFrame, 
 
 
 def outputs_to_frames(variant: str, bundle: dict, output: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
-    predictions = bundle["rows"].drop(columns="row_id").copy()
+    predictions = bundle["rows"].drop(columns=_PREDICTION_ROW_ID).copy()
     predictions["model"] = variant; predictions["correction"] = output["correction"].detach().cpu().numpy()
     predictions["final_residual_prediction"] = predictions.stock_residual_prediction + predictions.correction
     predictions["residual_prediction"] = predictions.final_residual_prediction
@@ -146,7 +154,7 @@ def outputs_to_frames(variant: str, bundle: dict, output: dict) -> tuple[pd.Data
     predictions["high_baseline_error_label_using_train_threshold"] = bundle["impact_label"].detach().cpu().numpy().astype(int)
     edge_columns = ["event_id", "original_event_id", "news_date", "effective_date", "ticker", "category", "event_type",
                     "text_hash", "original_text_hash", "chunk_index", "chunk_count", "token_count", "horizon", "fold_id",
-                    "analysis_split", "row_id", "semantic_novelty", "catalyst_score", "entity_relevance",
+                    "analysis_split", "row_id", _PREDICTION_ROW_ID, "semantic_novelty", "catalyst_score", "entity_relevance",
                     "timestamp_confidence", "word_count", "payload_source_ticker", "wrong_ticker_payload"]
     edge = bundle["edges"][[c for c in edge_columns if c in bundle["edges"]]].copy()
     edge["model"] = variant; edge["edge_gate"] = output["edge_gate"].detach().cpu().numpy()

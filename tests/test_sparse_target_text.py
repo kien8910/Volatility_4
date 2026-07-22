@@ -11,6 +11,7 @@ from src.sparse_target_text.data import (attach_embeddings_and_novelty, _effecti
 from src.sparse_target_text.filtering import hard_filter_events
 from src.sparse_target_text.losses import sparse_hurdle_loss
 from src.sparse_target_text.models import SparseHurdleCorrector, segment_topk_mask
+from src.sparse_target_text.trainer import STATE_COLUMNS, _tensor_bundle, outputs_to_frames
 
 
 class FakeTokenizer:
@@ -120,3 +121,41 @@ def test_embedding_attach_ignores_events_rejected_by_basic_filter(tmp_path, monk
 
     assert attached.event_id.tolist() == ["e1"]
     assert np.allclose(attached.embedding.iloc[0], [1.0, 0.0])
+
+
+def test_tensor_bundle_keeps_news_row_id_separate_from_prediction_row_id():
+    cfg = minimal_cfg()
+    cfg["data"] = {"tickers": ["AMD"], "horizons": [1, 5]}
+    cfg["training"] = {"impact_label_quantile": 0.8}
+    baseline = pd.DataFrame({
+        "date": pd.to_datetime(["2022-01-03"] * 2), "ticker": ["AMD"] * 2, "horizon": [1, 5],
+        "fold_id": [1, 1], "analysis_split": ["train", "train"], "baseline_error": [0.1, 0.2],
+        "actual_logvol": [-2.0, -1.9],
+    })
+    for column in STATE_COLUMNS:
+        baseline[column] = 0.1
+    baseline["baseline_prediction"] = 0.2
+    events = pd.DataFrame({
+        "row_id": [987], "date": pd.to_datetime(["2022-01-02"]),
+        "effective_date": pd.to_datetime(["2022-01-03"]), "ticker": ["AMD"],
+        "event_type": ["earnings"], "semantic_novelty": [0.5], "catalyst_score": [1.0],
+        "entity_relevance": [1.0], "timestamp_confidence": [0.0], "word_count": [20],
+        "embedding": [np.asarray([1.0, 0.0], dtype=np.float32)],
+    })
+
+    bundle = _tensor_bundle(baseline, events, cfg, torch.device("cpu"))
+
+    assert bundle["edges"].row_id.tolist() == [987, 987]
+    assert bundle["edges"].prediction_row_id.tolist() == [0, 1]
+    assert bundle["edge_row"].tolist() == [0, 1]
+    assert not {"row_id_x", "row_id_y", "date_x", "date_y"}.intersection(bundle["edges"].columns)
+
+    output = {
+        "correction": torch.zeros(2), "hurdle_probability": torch.zeros(2),
+        "has_event": torch.ones(2, dtype=torch.bool), "edge_gate": torch.ones(2),
+        "selected_mask": torch.ones(2, dtype=torch.bool),
+    }
+    predictions, edge_output = outputs_to_frames("T1_all_target", bundle, output)
+
+    assert "prediction_row_id" not in predictions
+    assert edge_output[["row_id", "prediction_row_id"]].values.tolist() == [[987, 0], [987, 1]]
