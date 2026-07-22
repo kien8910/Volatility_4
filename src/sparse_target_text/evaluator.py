@@ -7,8 +7,9 @@ from src.graph.metrics import qlike_from_logvol
 def add_losses(predictions: pd.DataFrame) -> pd.DataFrame:
     out = predictions.copy()
     out["qlike_loss"] = qlike_from_logvol(out.actual_logvol, out.final_prediction)[0]
-    out["absolute_error"] = (out.actual_logvol - out.final_prediction).abs()
-    out["squared_error"] = (out.actual_logvol - out.final_prediction).square()
+    error = out["actual_logvol"].astype(float) - out["final_prediction"].astype(float)
+    out["absolute_error"] = error.abs()
+    out["squared_error"] = error.pow(2)
     return out
 
 
@@ -21,10 +22,14 @@ def metric_table(predictions: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
 
 def gate_diagnostics(edges: pd.DataFrame) -> pd.DataFrame:
     if edges.empty:
-        return pd.DataFrame(columns=["model", "analysis_split", "horizon", "n_edges", "selection_rate", "gate_mean"])
-    return (edges.groupby(["model", "analysis_split", "horizon"], dropna=False).agg(
+        return pd.DataFrame(columns=["model", "analysis_split", "horizon", "n_edges", "selection_rate",
+                                     "gate_mean", "gate_std", "novelty_selected"])
+    work = edges.reset_index(drop=True).copy()
+    work["selected"] = work["selected"].astype(bool)
+    work["selected_novelty"] = work["semantic_novelty"].where(work["selected"])
+    return (work.groupby(["model", "analysis_split", "horizon"], dropna=False).agg(
         n_edges=("edge_gate", "size"), selection_rate=("selected", "mean"), gate_mean=("edge_gate", "mean"),
-        gate_std=("edge_gate", "std"), novelty_selected=("semantic_novelty", lambda x: x[edges.loc[x.index, "selected"].eq(1)].mean()))
+        gate_std=("edge_gate", "std"), novelty_selected=("selected_novelty", "mean"))
         .reset_index())
 
 

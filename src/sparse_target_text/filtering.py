@@ -52,7 +52,9 @@ def hard_filter_events(events: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
 
 def deterministic_selection_score(events: pd.DataFrame) -> pd.Series:
-    novelty = pd.to_numeric(events.get("semantic_novelty", 0.0), errors="coerce").fillna(0.0).clip(0, 2) / 2.0
+    novelty_source = (events["semantic_novelty"] if "semantic_novelty" in events
+                      else pd.Series(0.0, index=events.index, dtype=float))
+    novelty = pd.to_numeric(novelty_source, errors="coerce").fillna(0.0).clip(0, 2) / 2.0
     return (
         0.35 * events.entity_relevance.astype(float)
         + 0.25 * events.catalyst_score.astype(float)

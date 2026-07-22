@@ -8,7 +8,8 @@ from src.news.embedding_cache import EmbeddingCache
 from src.sparse_target_text.chunking import tokenizer_chunk_events
 from src.sparse_target_text.data import (attach_embeddings_and_novelty, _effective_dates,
                                          shuffle_event_payload_within_day)
-from src.sparse_target_text.filtering import hard_filter_events
+from src.sparse_target_text.evaluator import add_losses, gate_diagnostics
+from src.sparse_target_text.filtering import deterministic_selection_score, hard_filter_events
 from src.sparse_target_text.losses import sparse_hurdle_loss
 from src.sparse_target_text.models import SparseHurdleCorrector, segment_topk_mask
 from src.sparse_target_text.trainer import STATE_COLUMNS, _tensor_bundle, outputs_to_frames
@@ -159,3 +160,34 @@ def test_tensor_bundle_keeps_news_row_id_separate_from_prediction_row_id():
 
     assert "prediction_row_id" not in predictions
     assert edge_output[["row_id", "prediction_row_id"]].values.tolist() == [[987, 0], [987, 1]]
+
+
+def test_add_losses_computes_series_squared_error_portably():
+    predictions = pd.DataFrame({"actual_logvol": [1.0, -1.0], "final_prediction": [0.5, -2.0]})
+
+    losses = add_losses(predictions)
+
+    assert np.allclose(losses.squared_error, [0.25, 1.0])
+
+
+def test_gate_diagnostics_is_safe_with_duplicate_input_indices():
+    edges = pd.DataFrame({
+        "model": ["T3"] * 3, "analysis_split": ["validation"] * 3, "horizon": [1, 1, 5],
+        "edge_gate": [0.8, 0.2, 0.1], "selected": [1, 0, 0],
+        "semantic_novelty": [0.25, 0.75, 0.5],
+    }, index=[0, 0, 1])
+
+    diagnostics = gate_diagnostics(edges).set_index("horizon")
+
+    assert np.isclose(diagnostics.loc[1, "novelty_selected"], 0.25)
+    assert np.isnan(diagnostics.loc[5, "novelty_selected"])
+
+
+def test_deterministic_score_defaults_missing_novelty_to_zero():
+    events = pd.DataFrame({
+        "entity_relevance": [1.0], "catalyst_score": [1.0], "timestamp_confidence": [0.0]
+    })
+
+    score = deterministic_selection_score(events)
+
+    assert np.isclose(score.iloc[0], 0.60)
